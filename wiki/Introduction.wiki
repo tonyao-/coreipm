@@ -1,0 +1,11 @@
+#summary Brief introduction to what this software is for
+
+= Introduction =
+
+This [http://www.intel.com/design/servers/ipmi/ani/index.htm animation from Intel] provides a high-level overview of IPMI.
+
+
+= Details =
+
+TBD
+
