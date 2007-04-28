@@ -1,4 +1,4 @@
-#summary Brief introduction to \"what this software is for\"
+#summary Brief introduction to &quot what this software is for &quot
 
 = Introduction =
 
