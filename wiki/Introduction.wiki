@@ -1,4 +1,5 @@
 #summary Brief introduction to what this software does
+#labels Featured
 
 = Introduction =
 
