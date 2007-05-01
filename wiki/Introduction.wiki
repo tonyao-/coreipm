@@ -1,5 +1,5 @@
 #summary Brief introduction to what this software does
-#labels Featured
+#labels Phase-Requirements
 
 = Introduction =
 
