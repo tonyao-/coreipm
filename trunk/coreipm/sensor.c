@@ -4,7 +4,7 @@ coreIPM/sensor.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -30,6 +30,9 @@ support and contact details.
 #include "ipmi.h"
 #include "event.h"
 #include "sensor.h"
+
+/* TODO Add i2c tem & hot swap sensors 
+ * Add scan functions */
 
 /* we currently have a sample A/D sensor */
 #define SDR_COUNT 	1 /*  This is the total number of SDRs in the device. */
@@ -106,6 +109,7 @@ ipmi_get_device_sdr_info( IPMI_PKT *pkt )
 }	
 
 /*
+Get Device SDR Command (section 35.3)
 
 The ‘Get Device SDR’ command allows SDR information for sensors for a Sensor
 Device (typically implemented in a satellite management controller) to be
@@ -119,7 +123,7 @@ A Sensor Device shall always utilize the same sensor number for a particular
 sensor. This is mandatory to keep System Event Log information consistent.
 
 Sensor Devices that support the ‘Get Device SDR’ command return SDR Records
-that match the SDR Repository formats.
+that match the SDR Repository formats. See section 43.
 
 */
 void 
@@ -293,7 +297,25 @@ ipmi_get_sensor_reading_factors( IPMI_PKT *pkt )
 	*/
 
 }
+/*
 
+IPM Controllers are required to maintain Device Sensor Data Records for the 
+sensors and objects they manage.
+
+After a FRU is inserted, the System Manager, using the Shelf Manager, may gather
+the various SDRs from the FRU’s IPM Controller to learn of the various objects
+and how to use them. The System Manager would use the “Sensor Device Commands”
+(Get Device SDR Info, Get Device SDR, Reserve Device SDR Repository, Get Sensor 
+Reading) to gather this information. Thus, commands, such as “Get Device SDR Info”
+and “Get Device SDR”, which are optional in the IPMI specification, are mandatory
+in AdvancedTCA® systems.
+
+The implementer may choose to have the Shelf Manager gather the individual 
+Device Sensor Data Records into a centralized SDR Repository. This SDR Repository
+may exist in either the Shelf Manager or System Manager. If the Shelf Manager 
+implements the SDR Repository on-board, it shall also respond to “SDR Repository”
+commands (ie. Get SDR Repository Info, Reserve SDR Repository, Get SDR etc)
+*/
 
 /*======================================================================*/
 /*
@@ -317,6 +339,7 @@ get_sdr_repository_info( IPMI_PKT *pkt )
 				   with bits 7:4 holding the Least Significant
 				   digit of the revision and bits 3:0 holding
 				   the Most Significant bits.) */
+	/* TODO create SDR repository infrastructure */
 	/* fill in the number of records in the SDR Repository */
 	resp->record_count_lsb = 0;	
 	resp->record_count_msb = 0;
@@ -357,6 +380,108 @@ get_sdr_repository_info( IPMI_PKT *pkt )
 }
 
 
+/*
+Get SDR Command
+Returns the sensor record specified by ‘Record ID’. The command also accepts a 
+‘byte range’ specification that allows just a selected portion of the record to
+be retrieved (incremental read). 
+
+The Requester must first reserve the SDR Repository using the ‘Reserve SDR Repository’
+command in order for an incremental read to an offset other than 0000h to be
+accepted. (It is also recommended that an application use the Get SDR Repository
+Info command to verify the version of the SDR Repository before it sends any 
+other SDR Repository commands. This is important since the SDR Repository command
+format and operation can change between versions.)
+
+If ‘Record ID’ is specified as 0000h, this command returns the Record Header 
+for the ‘first’ SDR in the repository. FFFFh specifies that the ‘last’ SDR in
+the repository should be listed. If ‘Record ID’ is non-zero, the command returns
+the information from the matching record, and the Record ID for the next SDR in
+the repository.
+
+An application that wishes to retrieve the full set of SDR Records must first
+issue the Get SDR starting with 0000h as the Record ID to get the first record.
+The Next Record ID is extracted from the response and this is then used as the
+Record ID in a Get SDR request to get the next record. This is repeated until
+the ‘Last Record ID’ value (FFFFh) is returned in the ‘Next Record ID’ field of
+the response.
+
+A partial read from offset 0000h into the record can be used to extract the 
+header and associated ‘Key Fields’ for the specified Sensor Data Record in the 
+SDR Repository. An application can use the command in this manner to get a list
+of what records are in the SDR and to identify the instances of each type. It
+can also be used to search for an particular sensor record.
+
+Note: to support future extensions, applications should check the SDR Version
+byte prior to interpreting any of the data that follows.
+
+If you issue a Get SDR command (storage 23h) with a 'bytes to read' size of 
+'FFh' - meaning 'read entire record'. Avalue of 'FFh' will cause an error in
+most cases, since SDRs are bigger than the buffer sizes for the typical system
+interface implementation. The controller therefore returns an error completion
+code if the number of record bytes exceeds the maximum transfer length for the
+interface. The completion code CAh that indicates that the number of requested
+bytes cannot be returned. Returning this code is recommended, although a controller
+could also return an 'FFh' completion code. In either case, the algorithm for
+handling this situation is to "default to using partial reads if the 'read entire
+record' operation fails" (that is, if you get a non-zero completion code).
+
+Reading the SDR Repository
+An application that retrieves records from the SDR Repository must first read
+them out sequentially. This is accomplished by using the Get SDR command to 
+retrieve the first SDR of the desired type. The response to this command returns
+the requested record and the Record ID of the next SDR in sequence in the
+repository. Note that Record IDs are not required to be sequential or consecutive.
+Applications should not assume that SDR Record IDs will follow any particular
+numeric ordering.
+
+The application retrieves succeeding records by issuing a Get SDR command using
+the ‘next’ Record ID that was returned with the response of the previous Get SDR
+command. This is continued until the ‘End of Records’ ID is encountered.
+
+Once the application has read out the desired records, it can then randomly access
+the records according to their Record ID. An application that seeks to access 
+records randomly must save a data structure that retains the Record Key information
+according to Record ID. Since it is possible for Record IDs to change with time,
+it is important for applications to first verify that the Record Key information
+matches up with the retrieved record. If the Record Key information doesn’t match,
+then the Record ID is no longer valid for that Record Key, and the SDR Records
+must again be accessed sequentially until the record that matches the Record Key
+is located.
+
+An application can also tell whether records have changed by examining the ‘most
+recent addition’ timestamp using the Get SDR Repository Info command.
+
+If record information has changed, an application does not need to list out the
+entire contents of all records. The Get SDR command allows a partial read of the
+SDR. Thus, an application can search for a given Record Key by just retrieving 
+that portion of the record.
+ 
+SDR ‘Record IDs’
+In order to generalize SDR access, Sensor Data Records are accessed using a 
+‘Record ID’ number. There are a fixed number of possible Record IDs for a given
+implementation of the SDR Repository.
+
+The most common implementation of ‘Record IDs’ is as a value that translates
+directly to an ‘index’ or ‘offset’ into the SDR Repository. However, it is also
+possible for an implementation to provide a level of indirection, and implement
+Record IDs as ‘handles’ to the Sensor Data Records.
+
+Record ID values may be ‘recycled’. That is, the Record ID of a previously deleted
+SDR can be used as the Record ID for a new SDR. The requirement is that, at any
+given time, the Record IDs are unique for all SDRs in the repository.
+
+Record IDs can be reassigned by the SDR Repository Device as needed when records
+are added or deleted. An application that uses a Record ID to directly access a
+record should always verify that the retrieved record information matches up 
+with the ID information (slave address, LUN, sensor ID, etc.) of the desired
+sensor. An application that finds that the SDR at a given ‘Record ID’ has moved
+will need to re-enumerate the SDRs by listing them out using a series of Get SDR
+commands. Note that it is not necessary to read out the full record data to see
+if the Record ID for a particular record has changed. Software can determine
+whether a given record has been given a different Record ID by examining just 
+the SDR’s header and record key bytes.
+*/
 void
 get_sdr( IPMI_PKT *pkt )
 {

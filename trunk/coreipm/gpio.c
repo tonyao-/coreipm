@@ -4,7 +4,7 @@ coreIPM/gpio.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -31,6 +31,8 @@ support and contact details.
 #include "ws.h"
 #include "i2c.h"
 #include "timer.h"
+#include "iopin.h"
+#include "mmcio.h"
 
 #define DEBUG_I2C_ADDRESS_1	0x20
 #define DEBUG_I2C_ADDRESS_2	0x28
@@ -48,47 +50,35 @@ typedef struct led_blink {
 } LED_BLINK;
 
 LED_BLINK led_blink;
-void gpio_led_blink_callback( char *led_mask );
+void gpio_led_blink_callback( unsigned char *led_mask );
 
 /* LEDs, switches, backplane address detection, etc, etc.. */
 
 void gpio_initialize( void ) 
 {
-	/* Remap interrupt vectors to SRAM */
-	/* MEMMAP=0x2;	startup code should take care of this ?		  */
-
-	/* Initialize GPIO ports to be used as indicators */
-	IODIR1 = 0x00FF0000;  /* on MBC2140 & MBC2103 boards P1.16..23 connected to LEDs  */
-	IOSET1 = 0x00FF0000;  /* turn on all LEDs */
-
-	/* Initialize Pin Connect Block */
-	/*
-	 * LPC2148
-	 * Pin function Select register 0 (PINSEL0) bit description
-	 * Bit   Symbol  Value Function
-	 * 5:4   P0.2    01    SCL0 (I2C0)
-	 * 7:6   P0.3    01    SDA0 (I2C0)
-	 * 23:22 P0.11   11    SCL1 (I2C1)
-	 * 29:28 P0.14   11    SDA1 (I2C1)
-	 *
-	 * LPC2101/02/03
-	 * Pin function Select register 0 (PINSEL0) bit description
-	 * Bit   Symbol  Value Function
-	 * 5:4   P0.2    01    SCL0 (I2C0)
-	 * 7:6   P0.3    01    SDA0 (I2C0)
-	 * Pin function select register 1 (PINSEL1) bit description
-	 * 3:2   P0.17   01    SCL1 (I2C1)
-	 * 5:4   P0.18   01    SDA1 (I2C1)
-	 * 
-	 */ 
-	
-	PINSEL0 = 0x50;		/* Setup i2c pins: P0.2 = SCL0, P0.3 = SDA0
-				 * All others are GPIO. This will work for both
-				 * 2103 & 2148 */
 	led_state = 0;
 	gpio_led_off( GPIO_LED_ALL );
 }
 
+/* gpio_get_hardware_setting()
+ * 
+ * 	Returns a value that is a mapping of configuration switches.
+ * 	Currently:
+ * 		1 if jumper J8 is unjumpered, and
+ * 		0 if jumper J8 is jumpered
+ *
+ * 	NOTE: MCB2140 dependent
+ */ 
+int gpio_get_hardware_setting( void )
+{
+	// get P1.20 (J8) setting
+	if( IOPIN1 & 0x00100000 ) {	// unjumpered, logic HIGH
+		return 1;
+	} else { 			// jumpered, logic LOW
+		return 0;
+	}
+}
+/* used for debugging only - call module_get_i2c_address for the real address */
 int gpio_get_i2c_address( int address_type )
 {
 	switch( address_type ) {
@@ -111,27 +101,55 @@ int gpio_get_i2c_address( int address_type )
 }
 
 
-/* On LPC2140 board P1.16..23 connected to LEDs  */
+/* LED control  */
 void gpio_led_on( unsigned led_mask )
 {
+	long long iopin = 0;
+	
 	led_state |= led_mask;
-	IOSET1 = ( 0xff & led_state ) << 16;
+	
+	if( led_state & GPIO_LED_0 ) iopin |= LED_0;
+	if( led_state & GPIO_LED_1 ) iopin |= LED_1;
+/*
+	if( led_state & GPIO_LED_2 ) iopin |= LED_2;
+	if( led_state & GPIO_LED_3 ) iopin |= LED_3;
+	if( led_state & GPIO_LED_4 ) iopin |= LED_4;
+	if( led_state & GPIO_LED_5 ) iopin |= LED_5;
+	if( led_state & GPIO_LED_6 ) iopin |= LED_6;
+	if( led_state & GPIO_LED_7 ) iopin |= LED_7;
+*/
+	
+	iopin_set( iopin );
 }
 
 void gpio_led_off( unsigned led_mask )
 {
+	long long iopin = 0;
+
 	led_state &= ( ~led_mask );
-	IOCLR1 = ( 0xff & ( ~led_state ) ) << 16;
+
+	if( ~led_state & GPIO_LED_0 ) iopin |= LED_0;
+	if( ~led_state & GPIO_LED_1 ) iopin |= LED_1;
+/*
+	if( ~led_state & GPIO_LED_2 ) iopin |= LED_2;
+	if( ~led_state & GPIO_LED_3 ) iopin |= LED_3;
+	if( ~led_state & GPIO_LED_4 ) iopin |= LED_4;
+	if( ~led_state & GPIO_LED_5 ) iopin |= LED_5;
+	if( ~led_state & GPIO_LED_6 ) iopin |= LED_6;
+	if( ~led_state & GPIO_LED_7 ) iopin |= LED_7;
+*/
+
+	iopin_clear( iopin );
 }
 
 void gpio_all_leds_on( void )
 {
-	IOSET1 = 0x00FF0000;
+//	iopin_set( LED_0 | LED_1 | LED_2 | LED_3 | LED_4 | LED_5 | LED_6 | LED_7  );
 }
 
 void gpio_all_leds_off( void )
 {
-	IOCLR1 = 0x00FF0000;
+//	iopin_clr( LED_0 | LED_1 | LED_2 | LED_3 | LED_4 | LED_5 | LED_6 | LED_7  );
 }
 
 void gpio_toggle_activity_led( void )
@@ -150,6 +168,7 @@ void gpio_led_blink ( unsigned led_mask,
 		unsigned off_period, 	/* in 100ms */
 		unsigned duration )		/* in 100ms - length of time we'll blink, 0 = forever */
 {
+	/* TODO: make sure we turn off any timers before starting a new blink sequence */
 	gpio_led_on( led_mask );
 	led_blink.state = 1;
 
@@ -166,6 +185,15 @@ void gpio_led_blink ( unsigned led_mask,
 	led_blink.led_mask = led_mask;
 	led_blink.duration = duration;
 	timer_add_callout_queue( &led_blink, on_period, gpio_led_blink_callback, 0 ); 
+}
+
+void
+gpio_led_blink_off( unsigned led_mask )
+{
+	led_blink.led_mask &= ( ~led_mask );
+
+	if( !led_blink.led_mask )
+		timer_remove_callout_queue( &led_blink );
 }
 
 void gpio_led_blink_callback( unsigned char *arg)
@@ -224,7 +252,9 @@ unsigned gpio_get_power_state( void )
 	return power_state;
 }
 
+int
 gpio_get_handle_switch_state( void )
 {
+	// TODO depends on the config
 	return HANDLE_SWITCH_CLOSED;
 }

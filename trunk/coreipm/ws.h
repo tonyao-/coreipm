@@ -4,7 +4,7 @@ coreIPM/ws.h
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -35,7 +35,17 @@ support and contact details.
 #define WS_ACTIVE_MASTER_READ		0x8
 #define WS_ACTIVE_MASTER_READ_PENDING	0x9
 
+#define WS_ARRAY_SIZE	8
+#define WS_BUF_LEN 32
 
+#define WS_FL_GENERAL_CALL	1
+#define WS_FL_REPEATED_START	2
+
+/* transport layer completion codes */
+#define XPORT_REQ_NOERR 	0 
+#define XPORT_REQ_ERR		1
+#define XPORT_RESP_NOERR	2
+#define XPORT_RESP_ERR		3
 
 void ws_set_state( IPMI_WS *, unsigned );
 void ws_init( void );
@@ -45,5 +55,6 @@ IPMI_WS *ws_get_elem( unsigned state );
 void ws_set_state( IPMI_WS * ws, unsigned state );
 void ws_process_work_list( void );
 IPMI_WS *ws_get_elem_seq( uchar seq );
+void ws_process_incoming( IPMI_WS *ws );
 
 

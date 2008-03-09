@@ -4,7 +4,7 @@ coreIPM/ipmi.h
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -346,6 +346,7 @@ typedef struct list_hdr {
 typedef struct ipmi_ws {
 //	LIST_HDR hdr;
 	unsigned ws_state;
+	unsigned len_rcv;		/* requested length of incoming pkt */
 	unsigned len_in;		/* lenght of incoming pkt */
 	unsigned len_out;		/* length of outgoing pkt */
 	unsigned len_sent;		/* length of pkt actually sent */
@@ -359,6 +360,7 @@ typedef struct ipmi_ws {
 	unsigned char incoming_medium;
 	unsigned char outgoing_medium;
 	unsigned char seq_out;		/* sequence number */
+	unsigned char delivery_attempts;
 	void *bridged_ws;		/* the ws we're bridging */
 	void(*xport_completion_function)( void *, int );
 	void(*ipmi_completion_function)( void *, int );
@@ -845,8 +847,18 @@ typedef struct ipmi_terminal_mode_response {
 	uchar	data[TERM_MODE_RESP_MAX_DATA_LEN];
 } IPMI_TERMINAL_MODE_RESPONSE;
 
-// Platform dependent - fill in as require
+// Platform dependent - fill in as required
 #define MAX_FRU_DEV_ID	0
+	/* TODO: For AMC carriers, this field indicates the maximum FRU ID
+	   supported by Carrier IPMC. It does not imply that all FRUs with
+	   FRU IDs between 0 and Max FRU ID are installed in the Carrier,
+	   since the AdvancedMC Slots implemented by the Carrier are not
+	   necessarily occupied.
+	   For AMC MMCs MAX_FRU_DEV_ID is required to be zero in this context
+	   (because MMCs do not have subsidiary FRUs by definition), but are
+	   retained in the response data for compatibility with other use
+	   contexts for this command. */
+
 #define DEACTIVATE_FRU(a) 
 #define ACTIVATE_FRU(a) 
 #define NUM_LUN		1
@@ -4148,6 +4160,17 @@ in this range (F0h and F1h) to the hot swap and IPMB-0 sensors, respectively.
 #define ST_HOT_SWAP				0xF0
 #define ST_IPMB_0				0xF1
 
+/* Hot swap events */
+#define MODULE_HANDLE_CLOSED		0 // Module Handle Closed
+#define MODULE_HANDLE_OPENED		1 // Module Handle Opened
+#define MODULE_QUIESCED			2 // Quiesced
+#define MODULE_BACKEND_POWER_FAILURE	3 // Backend Power Failure
+#define MODULE_BACKEND_POWER_SHUTDOWN	4 // Backend Power Shut Down
+
+/* Hot swap switch electrical states */
+#define HANDLE_SWITCH_OPEN	1	// pulled high when switch disengaged
+#define HANDLE_SWITCH_CLOSED	0	// connected to ground when the switch is engaged
+
 /*======================================================================*/
 /*
  *    SDR SENSOR DATA RECORD FORMATS
@@ -5247,6 +5270,14 @@ typedef struct set_sel_time_cmd_resp {
 #define ATCA_CMD_BUSED_RESOURCE_CONTROL		0x17	/* Bused Resource Control */
 #define ATCA_CMD_GET_IPMB_LINK_INFO		0x18	/* Get IPMB Link Info */
 
+/* AMC commands */
+#define ATCA_CMD_SET_AMC_PORT_STATE		0x19
+#define ATCA_CMD_GET_AMC_PORT_STATE		0x1A
+#define ATCA_CMD_SET_CLOCK_STATE		0x2C
+#define ATCA_CMD_GET_CLOCK_STATE		0x2D
+
+/* V3.0 commands */
+#define ATCA_CMD_FRU_CONTROL_CAPABILITIES	0x1E	/* FRU control capabilities */
 
 #define FRU_STATE_M0_NOT_INSTALLED		0	/* M0 – FRU Not Installed */
 #define FRU_STATE_M1_INACTIVE			1	/* M1 – FRU Inactive */
@@ -5271,6 +5302,7 @@ typedef struct fru_fan_info {
 #define FAN_CONTROL_OVERRIDE	1
 #define FAN_CONTROL_SHUTDOWN	2
 
+#define PICMG_ID		0
 /*----------------------------------------------------------------------*/
 /*			PICMG Generic Response				*/
 /*----------------------------------------------------------------------*/
@@ -5754,7 +5786,8 @@ typedef struct fru_control_cmd_req {
 #define FRU_CONTROL_WARM_RESET		0x01	/* 01h = Warm Reset */
 #define FRU_CONTROL_GRACEFUL_REBOOT	0x02	/* 02h = Graceful Reboot */
 #define FRU_CONTROL_ISSUE_DIAG_INT	0x03	/* 03h = Issue Diagnostic Interrupt */
-					/* 04h - FFh = Reserved */
+#define FRU_CONTROL_QUIESCE		0x04	/* 04h = Quiesce payload */
+					/* 05h - FFh = Reserved */
 } FRU_CONTROL_CMD_REQ;
 
 typedef struct fru_control_cmd_resp {
@@ -7183,3 +7216,5 @@ typedef struct str_lst{
 
 void ipmi_process_pkt( IPMI_WS *ws ); 
 void ipmi_initialize( void );
+unsigned char ipmi_get_next_seq( unsigned char *seq );
+unsigned char ipmi_calculate_checksum( char *ptr, int numchar );

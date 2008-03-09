@@ -4,7 +4,7 @@ coreIPM/fan.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -27,10 +27,11 @@ support and contact details.
 #include "fan.h"
 
 void fan_shutdown( unsigned char fan_id ) {
-	
+	// TODO
 }
 
 void fan_set_speed( unsigned char fan_id, unsigned char fan_level ) {
+	// TODO
 
 }
 

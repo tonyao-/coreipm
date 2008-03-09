@@ -4,7 +4,7 @@ coreIPM/i2c.h
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -132,6 +132,7 @@ Available addresses are therefore:
 #define	I2ERR_SLARW_SENT_NOT_ACKED	0x3
 #define I2ERR_NAK_RCVD			0x4
 #define I2ERR_TIMEOUT			0x5
+#define I2ERR_BUFFER_OVERFLOW		0x6
 
 /* Data direction */
 #define DATA_DIRECTION_WRITE	0x0
@@ -159,6 +160,7 @@ Available addresses are therefore:
 }					\
 
 /* Concurrency protection primitives */
+/* TODO */
 #define LOCK( lock )
 #define UNLOCK( lock )
 
@@ -195,10 +197,13 @@ Available addresses are therefore:
 /*==============================================================*/
 /* Function Prototypes						*/
 /*==============================================================*/
-
+void i2c_initialize( void );
 void i2c_send( void *ws );
 void i2c_interface_enable_local_control( unsigned char channel, unsigned char link_id );
 void i2c_interface_disable( unsigned char channel, unsigned char link_id );
 void i2c_master_write( IPMI_WS *ws );
 void i2c_master_read( IPMI_WS *ws );
-
+void i2c_test_read( void );
+void i2c_test_write( void );
+void i2c_set_slave_receive_callback( void ( *callback_fn )( void *, int ) );
+void i2c_set_read_buffer( unsigned char *buf, unsigned buf_len );

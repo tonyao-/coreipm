@@ -4,7 +4,7 @@ coreIPM/i2c.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -96,6 +96,7 @@ taken
 #include "serial.h"
 #include "debug.h"
 
+#define MAX_DELIVERY_ATTEMPTS 1
 
 /* keep track of channel specific information */
 typedef struct i2c_context {
@@ -105,7 +106,7 @@ typedef struct i2c_context {
 	unsigned char channel;		/* which channel this context belongs to */
 	unsigned error_count;
 	unsigned master_xmit_count;
-	unsigned slave_rcv_count;
+	unsigned slave_rcv_count;	/* counts the incoming slave reqs */
 	IPMI_WS *ws;		/* ptr to any buffers we are currently using */
 } I2C_CONTEXT;
 
@@ -118,6 +119,14 @@ unsigned	i2c_channel_selection_policy = CH_POLICY_0_ONLY;
 unsigned	i2c_last_channel_used = 1;
 unsigned	i2c_enable_timeout = 1;
 unsigned char 	retry_timer_handle;
+struct {
+	unsigned char *ptr;
+	unsigned len;
+	unsigned sent;
+} i2c_read_buffer;	/* used to provide data when we receive a slave read */
+
+unsigned char i2c_read_default_buffer[8] = { 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55 };
+void ( *i2c_slave_receive_callback )( void *, int ) = 0;
 
 /*==============================================================*/
 /* Global Variables						*/
@@ -129,54 +138,25 @@ unsigned int remote_i2c_address;	/* used for debugging only */
 /*==============================================================*/
 /* Local Function Prototypes					*/
 /*==============================================================*/
-void i2c_initialize(void);
-
-/* I2C ISR */
-void I2C_ISR_0(void) __irq;
-void I2C_ISR_1(void) __irq;
-
 void i2c_proc_stat( unsigned i2stat, unsigned channel );
-
-/* DEBUGGING */
-void master_write_test( void ); 
-
 void i2c_timeout( unsigned char *arg );
 void i2c_master_complete( IPMI_WS *ws, int status );
 void i2c_slave_complete( IPMI_WS *ws, int status );
 void i2c_retry_enable( unsigned char *arg );
 
-/*==============================================================
- * main()
- *==============================================================*/
-int main()
-{
-	unsigned long time;
+/* I2C ISR */
+#if defined (__CA__) || defined (__CC_ARM)
+void I2C_ISR_0(void) __irq;
+void I2C_ISR_1(void) __irq;
+#elif defined (__GNUC__)
+void I2C_ISR_0(void) __attribute__ ((interrupt));
+void I2C_ISR_1(void) __attribute__ ((interrupt));
+#endif
 
-	/* Initialize system */
-	ws_init();
-	gpio_initialize();
-	timer_initialize();
-	i2c_initialize();
-	uart_initialize();
-	ipmi_initialize();
+/* DEBUGGING */
+void i2c_test_write_complete( IPMI_WS *ws, int status );
+void i2c_test_read_complete( IPMI_WS *ws, int status );
 
-	dprintf( DBG_I2C | DBG_LVL1, "Hello World");
-	
-	time = lbolt;
-	
-	/* Do forever */
-	while( 1 )
-	{
-		/* Blink system activity LEDs once every second */
-		if( ( time + 2 ) < lbolt ) {
-			time = lbolt;
-			gpio_toggle_activity_led();
-		}
-		ws_process_work_list();
-		terminal_process_work_list();
-		timer_process_callout_queue();
-	}
-}
 
 
 /*==============================================================
@@ -185,10 +165,25 @@ int main()
 void i2c_initialize( void )
 {
 	int channel;
+
+	// initialize the read buffer
+	i2c_read_buffer.ptr = i2c_read_default_buffer;
+	i2c_read_buffer.len = 8;
+	i2c_read_buffer.sent = 0;
 	
 	/* get the i2c addresses */
-	local_i2c_address = gpio_get_i2c_address( I2C_ADDRESS_LOCAL );
-	remote_i2c_address = gpio_get_i2c_address( I2C_ADDRESS_REMOTE );
+	// local_i2c_address = gpio_get_i2c_address( I2C_ADDRESS_LOCAL );
+	// remote_i2c_address = gpio_get_i2c_address( I2C_ADDRESS_REMOTE );
+	/* TODO currently uses jumper J8 to determine the address
+	 * The 20 & 30 are test values and will likely be changed */
+	if( gpio_get_hardware_setting() ) {
+		local_i2c_address = 0x20;
+		remote_i2c_address = 0x30;
+	} else {
+		local_i2c_address = 0x30;
+		remote_i2c_address = 0x20;
+	}
+
 	
 	for( channel = 0 ; channel < I2C_NUM_CHANNELS; channel++ ) {
 		i2c_context[channel].state = I2STAT_NADDR_SLAVE_MODE;
@@ -202,7 +197,7 @@ void i2c_initialize( void )
 	 * Initialize I2C channel 0
 	 * ===========================*/
 	I2C0CONCLR = I2C_CTRL_FL_AA | I2C_CTRL_FL_SI | 
-		I2C_CTRL_FL_STA | I2C_CTRL_FL_I2EN; /* clearing all flags */
+		I2C_CTRL_FL_STA | I2C_CTRL_FL_STO | I2C_CTRL_FL_I2EN; /* clearing all flags */
 
 	/* I2C_CLOCK_RATE = PCLK / I2CSCLH + I2CSCLL */
 	//I2C0SCLH = 50; /* For 120 KHz i2c clock using a 12 MHz chip clock */
@@ -227,7 +222,7 @@ void i2c_initialize( void )
 	 * interrupts to contribute to FIQ or IRQ, zeroes have no effect.  */
 	VICIntEnable = IER_I2C0; /* enable I2C interrupts */
 
-	VICVectCntl0 = 0x29; /* highest priority and enabled */
+	VICVectCntl0 = 0x20 | IS_I2C0; /* enabled | interrupt source */
 	VICVectAddr0 = (unsigned long)I2C_ISR_0;
 
 	/* ISR address written to the respective address register*/
@@ -245,19 +240,29 @@ void i2c_initialize( void )
 
 	/* Set our slave address. The LSB of I2ADR is the general call bit.
 	 * We set this bit so that the general call address (0x00) is recognized. */
+	/* we have 3 options here:
+	 * - use this port as a loopback port, in this case the address is set to remote
+	 * - use this port as a dual redundant bus port, in this case the address is set to local
+	 * - use this port independently, in this case set the address to anything desired
+	 */
+#ifdef I2C_LOOPBACK
+	I2C1ADR = ( remote_i2c_address << 1 ) | 1;
+#else
 	I2C1ADR = ( local_i2c_address << 1 ) | 1;
+#endif
 	 	
 	/* When this register is written, ones enable interrupt requests or software
 	 * interrupts to contribute to FIQ or IRQ, zeroes have no effect.  */
 	VICIntEnable = IER_I2C1; /* enable I2C interrupts */
 
-	VICVectCntl1 = 0x29; /* highest priority and enabled */
+	VICVectCntl1 = 0x20 | IS_I2C1; /* enabled | interrupt source */
 	VICVectAddr1 = (unsigned long)I2C_ISR_1;
 
 	/* ISR address written to the respective address register*/
  	I2C1CONSET = I2C_CTRL_FL_I2EN | I2C_CTRL_FL_AA; /* enabling I2C */
 
 	/* start channel retry timer */
+	/* this resets error counts so failed channels get another chance to try */
 	timer_add_callout_queue( (void *)&retry_timer_handle,
 		       	30*HZ, i2c_retry_enable, 0 ); /* 30 sec timeout */
 
@@ -267,7 +272,11 @@ void i2c_initialize( void )
 /*==============================================================
  * INTERRUPT SERVICE ROUTINES
  *==============================================================*/
+#if defined (__CA__) || defined (__CC_ARM)
 void I2C_ISR_0( void ) __irq
+#elif defined (__GNUC__)
+void I2C_ISR_0( void )
+#endif
 {
 	unsigned int i2c_stat = 0;
 	
@@ -278,7 +287,11 @@ void I2C_ISR_0( void ) __irq
 				 * the value written here is irrelevant */
 }
 
+#if defined (__CA__) || defined (__CC_ARM)
 void I2C_ISR_1( void ) __irq
+#elif defined (__GNUC__)
+void I2C_ISR_1( void )
+#endif
 {
 	unsigned int i2c_stat = 0;
 	
@@ -354,7 +367,7 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 			/* A Start condition has been transmitted as a result of 
 			 * i2c_master_read/write. The slave address + R/W bit will 
 			 * be transmitted, an ACK bit received is expected next.
-			 * context->ws points to a send request
+			 * context->ws points to a send/receive request
 			 */
 			
 			if( ( !context->ws ) || ( context->state != I2STAT_START_MASTER ) || 
@@ -368,15 +381,15 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 					context->ws = 0;
 				}
 				context->state = I2STAT_NADDR_SLAVE_MODE;
-				start_timer = 0;
 				context->op_type = OP_MODE_SLAVE;
+				start_timer = 0;
 				I2CCONSET( I2C_CTRL_FL_AA | I2C_CTRL_FL_STO, channel );
 				I2CCONCLR( I2C_CTRL_FL_SI, channel ); 
 			} else {
 				context->state = I2STAT_START_SENT;
 			
 				/* load I2DAT with the slave address and the data 
-				 * direction bit (SLA+W). The SI bit in I2CON must 
+				 * direction bit (SLA+W or SLA+R). The SI bit in I2CON must 
 				 * then be reset before the serial transfer can continue.
 				 */
 				if( context->op_type == OP_MODE_MASTER_XMIT ) {
@@ -451,16 +464,16 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 					context->ws = 0;
 				}
 				context->state = I2STAT_NADDR_SLAVE_MODE;
-				start_timer = 0;
 				context->op_type = OP_MODE_SLAVE;
-				I2CCONSET( I2C_CTRL_FL_STO, channel );
+				start_timer = 0;
+				I2CCONSET( I2C_CTRL_FL_STO | I2C_CTRL_FL_AA, channel );
 				I2CCONCLR( I2C_CTRL_FL_SI, channel ); 
 			} else {
 				context->state = I2STAT_SLAW_SENT_ACKED;
 				/* write first byte of data */
 				context->ws->len_sent = 1;
 				I2CDAT_WRITE( context->ws->pkt_out[0], channel );
-				I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_STA, channel ); 
+				I2CCONCLR( I2C_CTRL_FL_SI, channel ); 
 			}
 			break;
 
@@ -501,8 +514,8 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 					context->ws = 0;
 				}
 				context->state = I2STAT_NADDR_SLAVE_MODE;
-				start_timer = 0;
 				context->op_type = OP_MODE_SLAVE;
+				start_timer = 0;
 				I2CCONSET( I2C_CTRL_FL_AA | I2C_CTRL_FL_STO, channel );
 				I2CCONCLR( I2C_CTRL_FL_SI, channel ); 
 			} else {
@@ -510,11 +523,18 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 				if (context->ws->len_sent >= context->ws->len_out ) {
 					/* we've sent all the data requested of us */
 					(*context->ws->xport_completion_function)( context->ws, I2ERR_NOERR );
-					context->ws = 0;
-					context->state = I2STAT_NADDR_SLAVE_MODE;
-					start_timer = 0;
-					context->op_type = OP_MODE_SLAVE;
-					I2CCONSET( I2C_CTRL_FL_AA | I2C_CTRL_FL_STO , channel );
+					if( context->ws->flags & WS_FL_REPEATED_START ) {
+						context->ws->flags = 0;
+						/* currently we only support a write followed by a read */
+						I2CCONSET( I2C_CTRL_FL_AA | I2C_CTRL_FL_STA , channel );
+						context->op_type = OP_MODE_MASTER_RCV;
+					} else {
+						context->ws = 0;
+						context->state = I2STAT_NADDR_SLAVE_MODE;
+						context->op_type = OP_MODE_SLAVE;
+						start_timer = 0;
+						I2CCONSET( I2C_CTRL_FL_AA | I2C_CTRL_FL_STO , channel );
+					}
 					I2CCONCLR( I2C_CTRL_FL_SI, channel );
 				} else {
 					I2CDAT_WRITE( context->ws->pkt_out[context->ws->len_sent], channel );
@@ -541,47 +561,128 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 
 		/* Master receiver mode */
 		case I2STAT_SLAR_SENT_ACKED:			
-		case I2STAT_SLAR_SENT_NOT_ACKED:
-		case I2STAT_MASTER_DATA_RCVD_ACKED:
-		case I2STAT_MASTER_DATA_RCVD_NOT_ACKED:
-			/* Not suppported right now - we will need this for local i2c bus support
-			 * For the tlme being we should not be here, send a STOP 
-			 * & enter not adressed slave mode.
+			/* Previous state was State I2STAT_START_SENT or 
+			 * State I2STAT_REP_START_SENT. Slave Address + 
+			 * Read has been transmitted, ACK has been received.
+			 * The first data byte will be received, an ACK 
+			 * bit will be sent, then the state will transition
+			 * to I2STAT_MASTER_DATA_RCVD_ACKED.
 			 */
-			if( context->ws ) {
-				(*context->ws->xport_completion_function)( context->ws, I2ERR_STATE_TRANSITION );
-				context->ws = 0;
+			
+			if( (!context->ws ) ||
+			    ( ( context->state != I2STAT_START_SENT ) && 
+			      ( context->state != I2STAT_REP_START_SENT ) ) || 
+			    ( context->op_type != OP_MODE_MASTER_RCV ) ) {
+				if( context->ws ) {
+					(*context->ws->xport_completion_function)( context->ws, 
+							I2ERR_STATE_TRANSITION );
+					context->ws = 0;
+				}
+				context->state = I2STAT_NADDR_SLAVE_MODE;
+				start_timer = 0;
+				context->op_type = OP_MODE_SLAVE;
+				I2CCONSET( I2C_CTRL_FL_STO, channel );
+				I2CCONCLR( I2C_CTRL_FL_SI, channel ); 
+			} else {  /* get ready to accept first byte of data */
+				context->state = I2STAT_SLAR_SENT_ACKED;				
+				I2CCONSET( I2C_CTRL_FL_AA, channel );
+				I2CCONCLR( I2C_CTRL_FL_SI, channel );
+			}
+			break;
+
+		case I2STAT_MASTER_DATA_RCVD_ACKED: 
+			if( (!context->ws ) ||
+			    ( ( context->state != I2STAT_SLAR_SENT_ACKED ) &&
+			      ( context->state != I2STAT_MASTER_DATA_RCVD_ACKED ) ) ||
+			    ( context->op_type != OP_MODE_MASTER_RCV ) ) {
+
+				if( context->ws ) {
+					(*context->ws->xport_completion_function)( context->ws, 
+							I2ERR_STATE_TRANSITION );
+					context->ws = 0;
+				}
+				context->state = I2STAT_NADDR_SLAVE_MODE;
+				start_timer = 0;
+				context->op_type = OP_MODE_SLAVE;
+				I2CCONSET( I2C_CTRL_FL_STO, channel );
+				I2CCONCLR( I2C_CTRL_FL_SI, channel ); 
+			} else {
+				if( context->ws->len_in > WS_BUF_LEN ) {	
+					(*context->ws->xport_completion_function)( context->ws, 
+							I2ERR_BUFFER_OVERFLOW );
+					context->ws = 0;
+					/* clear AA flag to send a no-ack, 
+					 * we should transition to MASTER_DATA_RCVD_NOT_ACKED*/
+					I2CCONCLR( I2C_CTRL_FL_AA, channel );
+				} else if( context->ws->len_in >= context->ws->len_rcv ) {
+					(*context->ws->xport_completion_function)( context->ws, 
+							I2ERR_NOERR );
+					context->ws = 0;
+					/* clear AA flag to send a no-ack, 
+					 * we should transition to MASTER_DATA_RCVD_NOT_ACKED*/
+					I2CCONCLR( I2C_CTRL_FL_AA, channel ); 
+				} else {
+					context->state = I2STAT_MASTER_DATA_RCVD_ACKED;
+					context->ws->pkt_in[context->ws->len_in] = I2CDAT_READ( channel );
+					context->ws->len_in++;
+					I2CCONSET( I2C_CTRL_FL_AA, channel ); /* set AA flag to get next data byte */
+				}
+				I2CCONCLR( I2C_CTRL_FL_SI, channel );
 			}
 
+			break;
+			
+		case I2STAT_SLAR_SENT_NOT_ACKED:  
+			/* Slave Address + Read bit has been transmitted, NOT ACK
+			 * has been received. A Stop condition will be transmitted.
+			 * Release current ws & enter not adressed slave mode. */
+			
+			/* We will end up here if there are no listeners/open circuit
+			 * on the bus so increment the channel error count. */
+			context->error_count++;
+			
+			if( context->ws ) {
+				(*context->ws->xport_completion_function)( context->ws, I2ERR_SLARW_SENT_NOT_ACKED );
+				context->ws = 0;
+			}
 			context->state = I2STAT_NADDR_SLAVE_MODE;
-			start_timer = 0;
 			context->op_type = OP_MODE_SLAVE;
+			start_timer = 0;
+			I2CCONSET( I2C_CTRL_FL_STO, channel );
+			I2CCONCLR( I2C_CTRL_FL_SI, channel ); 
+			break;
+
+		case I2STAT_MASTER_DATA_RCVD_NOT_ACKED:
+			context->state = I2STAT_NADDR_SLAVE_MODE;
+			context->op_type = OP_MODE_SLAVE;
+			start_timer = 0;
+			/* Send a STOP, we're all done */
 			I2CCONSET( I2C_CTRL_FL_AA | I2C_CTRL_FL_STO , channel );
 			I2CCONCLR( I2C_CTRL_FL_SI, channel );
+			break;
+
+		case I2STAT_GENERAL_CALL_RCVD_ACKED: 
 			break;
 			
 		/* Slave receiver mode*/
 		case I2STAT_SLAW_RCVD_ACKED: 
-		case I2STAT_GENERAL_CALL_RCVD_ACKED:
 			/* Own SLA+W has been rcvd; ACK has been returned. */
 
 			/* illegal state transition handling */
 			if( context->state != I2STAT_NADDR_SLAVE_MODE ) {
-				if( context->ws ) {
-					(*context->ws->xport_completion_function)( context->ws, I2ERR_STATE_TRANSITION );
-					context->ws = 0;
-				}
-				context->op_type = OP_MODE_SLAVE;
-				/* Return NAK */
+				context->state = I2STAT_SLAW_RCVD_ACKED;
+				start_timer = 0;
+				/* Return NAK, we should transition to SLAVE_DATA_RECEIVED_NOT_ACKED */
 				I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_AA, channel ); 
-				return;
+				break;
 			}
 			
 			/* set up data buffer */
 			if( !( context->ws = ws_alloc() ) ) {
-				/* Buffer allocation failed handling: return NAK */
+				dputstr( DBG_I2C | DBG_ERR, "i2c_procstat: ws_alloc failed \n" );
+				/* Return NAK, we should transition to SLAVE_DATA_RECEIVED_NOT_ACKED */
 				I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_AA, channel ); 
-				return;
+				break;
 			}
 
 			context->ws->incoming_protocol = IPMI_CH_PROTOCOL_IPMB;
@@ -589,6 +690,7 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 			context->ws->incoming_channel = IPMI_CH_NUM_PRIMARY_IPMB;
 			context->op_type = OP_MODE_SLAVE_ALLOC;
 			context->ws->xport_completion_function = i2c_slave_complete; 
+			context->ws->ipmi_completion_function = i2c_slave_receive_callback;
 			context->ws->len_in = 0; /* reset data counter */
 			context->state = I2STAT_SLAW_RCVD_ACKED;
 			context->slave_rcv_count++;
@@ -597,7 +699,7 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 			else
 				context->ws->flags = 0;
 			
-			/* set AA flag to get data byte & clear SI */
+			/* set AA flag to send ACK & clear interrupt bit SI */
 			I2CCONSET( I2C_CTRL_FL_AA, channel );
 			I2CCONCLR( I2C_CTRL_FL_SI, channel ); 
 
@@ -606,12 +708,13 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 
 		case I2STAT_SLAVE_DATA_RCVD_ACKED:
 		case I2STAT_GENERAL_CALL_DATA_RCVD_ACKED:
+			context->state = I2STAT_SLAVE_DATA_RCVD_ACKED;
 			/* Previously addressed with own SLV address; 
 			 * DATA has been received; ACK has been returned. */
-			if( ( context->state != I2STAT_SLAVE_DATA_RCVD_ACKED ) ||
-				( context->state != I2STAT_SLAW_RCVD_ACKED ) ||
-				( context->state != I2STAT_GENERAL_CALL_RCVD_ACKED ) ||
-				( context->state != I2STAT_GENERAL_CALL_DATA_RCVD_ACKED ) ||
+			if( ( context->state != I2STAT_SLAVE_DATA_RCVD_ACKED ) &&
+				( context->state != I2STAT_SLAW_RCVD_ACKED ) &&
+				( context->state != I2STAT_GENERAL_CALL_RCVD_ACKED ) &&
+				( context->state != I2STAT_GENERAL_CALL_DATA_RCVD_ACKED ) &&
 				( context->state != I2STAT_ARB_LOST_SLAW_RCVD_ACKED ) ) {
 
 				/* illegal state transition handling */
@@ -620,17 +723,22 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 					context->ws = 0;
 				}
 				context->op_type = OP_MODE_SLAVE;
-				/* Return NAK */
+				/* Return NAK
+				 * we should transition to I2STAT_SLAVE_DATA_RCVD_NOT_ACKED */
 				I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_AA, channel ); 
-				return;
+				break;
 			}
 				
-			if( context->ws->len_in > WS_BUF_LEN ) {
-				/* clear AA flag to send a no-ack */
+			if( context->ws->len_in >= WS_BUF_LEN ) {
+				if( context->ws ) {
+					(*context->ws->xport_completion_function)( context->ws, I2ERR_BUFFER_OVERFLOW );
+					context->ws = 0;
+				}
+
+				/* Return NAK
+				 * we should transition to I2STAT_SLAVE_DATA_RCVD_NOT_ACKED */
 				I2CCONCLR( I2C_CTRL_FL_AA, channel );
 
-				ws_free( context->ws );
-				context->ws = 0;
 			} else {
 				context->ws->pkt_in[context->ws->len_in] = I2CDAT_READ( channel );
 				context->ws->len_in++;
@@ -638,7 +746,6 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 				/* set AA flag to get next data byte */
 				I2CCONSET( I2C_CTRL_FL_AA, channel );
 			}
-			context->state = I2STAT_SLAVE_DATA_RCVD_ACKED;
 			I2CCONCLR( I2C_CTRL_FL_SI, channel );
 
 			break;
@@ -672,30 +779,22 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 		case I2STAT_SLAVE_DATA_RCVD_NOT_ACKED:
 			/* Previously addressed with own Slave Address. Data 
 			 * has been received and NOT ACK has been returned. 
-			 * Received data will not be saved. Not addressed 
-			 * Slave mode is entered.
-			 */
-			context->state = I2STAT_NADDR_SLAVE_MODE;
-			start_timer = 0;
+			 * Received data will not be saved. Master will send
+			 * a STOP. */			
 			I2CCONSET( I2C_CTRL_FL_AA, channel );
 			I2CCONCLR( I2C_CTRL_FL_SI, channel );
 			break;
 
 		case I2STAT_STOP_START_RCVD:
-			if( ( context->state != I2STAT_SLAVE_DATA_RCVD_ACKED ) ||
-			    ( context->state != I2STAT_GENERAL_CALL_DATA_RCVD_ACKED ) ) {
-				/* illegal state transition */
+			if( ( context->state == I2STAT_SLAVE_DATA_RCVD_ACKED ) ||
+			    ( context->state == I2STAT_GENERAL_CALL_DATA_RCVD_ACKED ) ) {
 				if( context->ws ) {
-					(*context->ws->xport_completion_function)( context->ws, I2ERR_STATE_TRANSITION );
+					(*context->ws->xport_completion_function)( context->ws, I2ERR_NOERR );
+					context->ws = 0;
 				}
-			} else {
-				(*context->ws->xport_completion_function)( context->ws, I2ERR_NOERR );
-			}				
-						
+			} 			
 			context->state = I2STAT_NADDR_SLAVE_MODE;
 			start_timer = 0;
-
-			context->ws = 0;
 
 			/* Set AA flag & clear SI */
 			I2CCONSET( I2C_CTRL_FL_AA, channel );
@@ -705,11 +804,21 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 			
 		/* Slave transmitter mode */
 		case I2STAT_SLAR_RCVD_ACKED:
-			if( context->ws ) {
-				(*context->ws->xport_completion_function)( context->ws, I2ERR_STATE_TRANSITION );
-				context->ws = 0;
+			/* Own SLA+R has been rcvd; ACK has been returned. */
+			if( ( context->state != I2STAT_NADDR_SLAVE_MODE )  && 
+			    ( context->state != I2STAT_SLAVE_DATA_SENT_ACKED ) ) {
+				/* Return NAK, should transition to SLAVE_DATA_SENT_NOT_ACKED */
+				I2CCONCLR( I2C_CTRL_FL_AA, channel ); 
+			} else {
+				context->state = I2STAT_SLAR_RCVD_ACKED;
+				/* send the first byte in our transmit buffer */
+				I2CDAT_WRITE( i2c_read_buffer.ptr[0], channel );
+				i2c_read_buffer.sent = 1;
+			
+				/* Set AA flag & clear SI */
+				I2CCONSET( I2C_CTRL_FL_AA, channel );
 			}
-			I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_AA , channel );
+			I2CCONCLR( I2C_CTRL_FL_SI, channel );
 			break;
 			
 		case I2STAT_ARB_LOST_SLAR_RCVD_ACKED:
@@ -720,30 +829,37 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 			I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_AA , channel );
 			break;
 
-		case I2STAT_SLAVE_DATA_SENT_ACKED:
-			/* Not supposed to get here. Set AA flag & clear SI */
-			if( context->ws ) {
-				(*context->ws->xport_completion_function)( context->ws, I2ERR_STATE_TRANSITION );
-				context->ws = 0;
+		case I2STAT_SLAVE_DATA_SENT_ACKED: 
+			context->state = I2STAT_SLAVE_DATA_SENT_ACKED;
+			if( ( context->state != I2STAT_SLAR_RCVD_ACKED ) &&
+				       ( context->state != I2STAT_SLAVE_DATA_SENT_ACKED ) ) {
+				/* send NAK to indicate we don't have any data to send.
+				 * we should transition to DATA_SENT_NOT_ACKED */
+				I2CCONCLR( I2C_CTRL_FL_AA, channel );
+			} else {
+				if( i2c_read_buffer.sent >= i2c_read_buffer.len ) {
+					/* send NAK to indicate we don't have any data to send.
+					 * we should transition to DATA_SENT_NOT_ACKED */
+					I2CCONCLR( I2C_CTRL_FL_AA, channel ); 
+				} else {
+					I2CDAT_WRITE( i2c_read_buffer.ptr[i2c_read_buffer.sent++], channel );
+					I2CCONSET( I2C_CTRL_FL_AA, channel );
+				}
 			}
-			I2CCONSET( I2C_CTRL_FL_AA, channel );
 			I2CCONCLR( I2C_CTRL_FL_SI, channel );
 			break;
 			
 		case I2STAT_SLAVE_DATA_SENT_NOT_ACKED:
-			if( context->ws ) {
-				(*context->ws->xport_completion_function)( context->ws, I2ERR_STATE_TRANSITION );
-				context->ws = 0;
-			}
+			/* Master indicates that it does not want more data.
+			 * Master should follow this with a STOP */
+			context->state = I2STAT_NADDR_SLAVE_MODE;
 			I2CCONSET( I2C_CTRL_FL_AA, channel );
 			I2CCONCLR( I2C_CTRL_FL_SI, channel );
 			break;
 
 		case I2STAT_LAST_BYTE_SENT_ACKED:
-			if( context->ws ) {
-				(*context->ws->xport_completion_function)( context->ws, I2ERR_STATE_TRANSITION );
-				context->ws = 0;
-			}
+			/* Slave indicates that it does not want more data.
+			 * Master should follow this with a STOP */
 			I2CCONSET( I2C_CTRL_FL_AA, channel );
 			I2CCONCLR( I2C_CTRL_FL_SI, channel );
 			break;
@@ -821,6 +937,8 @@ i2c_master_read( IPMI_WS *ws )
 	unsigned channel;
 	I2C_CONTEXT *context;
 
+	ws->xport_completion_function = i2c_master_complete; 
+
 	/* select channel */
 	switch( i2c_channel_selection_policy ) {
 		case CH_POLICY_0_ONLY:
@@ -830,12 +948,13 @@ i2c_master_read( IPMI_WS *ws )
 			channel = i2c_last_channel_used = 1;
 			break;
 		case CH_POLICY_ALL:
-			/* Per ATCA spec. An IPM Controller will try to 
+			/* If we have two redundant channels, try to 
 			 * alternate the transmission of messages between
-			 * IPMB-A and IPMB-B. If an IPM Controller is unable
-			 * to transmit on the desired IPMB then it will try
-			 * to send the message on the alternate IPMB. */
-			/* use the channel with least errors */
+			 * them. If we are unable to transmit on the desired
+			 * channel then we will try to send the message on the
+			 * alternate channel. If a channel error count exceeds
+			 * a threshold use the channel with least errors.
+			 * TODO use a threshold value. */
 			if( i2c_context[0].error_count == i2c_context[1].error_count ) {
 				if( i2c_last_channel_used == 0)
 					channel = i2c_last_channel_used = 1;
@@ -901,12 +1020,13 @@ i2c_master_write( IPMI_WS *ws )
 			channel = i2c_last_channel_used = 1;
 			break;
 		case CH_POLICY_ALL:
-			/* Per ATCA spec. An IPM Controller will try to 
+			/* If we have two redundant channels, try to 
 			 * alternate the transmission of messages between
-			 * IPMB-A and IPMB-B. If an IPM Controller is unable
-			 * to transmit on the desired IPMB then it will try
-			 * to send the message on the alternate IPMB. */
-			/* we use the channel with least errors */
+			 * them. If we are unable to transmit on the desired
+			 * channel then we will try to send the message on the
+			 * alternate channel. If a channel error count exceeds
+			 * a threshold use the channel with least errors.
+			 * TODO use a threshold value. */
 			if( i2c_context[0].error_count == i2c_context[1].error_count ) {
 				if( i2c_last_channel_used == 0)
 					channel = i2c_last_channel_used = 1;
@@ -937,10 +1057,11 @@ i2c_master_write( IPMI_WS *ws )
 		
 		dputstr( DBG_I2C | DBG_LVL1, "i2c_master_write: sending START bit\n" );
 
-		I2CCONSET( I2C_CTRL_FL_STA | I2C_CTRL_FL_I2EN, channel );
+		I2CCONCLR( I2C_CTRL_FL_STO, channel ); /* clear any residual bits */
+		I2CCONSET( I2C_CTRL_FL_STA | I2C_CTRL_FL_I2EN | I2C_CTRL_FL_AA, channel );
 		
 		/* we will wait until a START can be sent, need to start timeout
-		 * here so we can recover and try a different channel */
+		 * here so we can recover and try a different channel or abort */
 		if( i2c_enable_timeout ) {
 			timer_add_callout_queue( (void *)&context->state_transition_timer,
 		       		10*HZ, i2c_timeout, context ); /* 10 sec timeout */
@@ -951,7 +1072,7 @@ i2c_master_write( IPMI_WS *ws )
 	}		
 }
 
-/* Transport completion routine */
+/* Master op transport completion routine */
 void
 i2c_master_complete( IPMI_WS *ws, int status )
 {
@@ -960,8 +1081,8 @@ i2c_master_complete( IPMI_WS *ws, int status )
 			dputstr( DBG_I2C | DBG_LVL1, "i2c_master_complete: completed with I2ERR_NOERR\n" );
 			ws_set_state( ws, WS_ACTIVE_MASTER_WRITE_SUCCESS );
 			if( ws->ipmi_completion_function ) {
-				(ws->ipmi_completion_function)( (void *)ws, 
-							XPORT_REQ_NOERR );
+				( ws->ipmi_completion_function )( (void *)ws, 
+						XPORT_REQ_NOERR );
 			} else { 
 				ws_free( ws );
 			}
@@ -974,15 +1095,22 @@ i2c_master_complete( IPMI_WS *ws, int status )
 		case I2ERR_TIMEOUT:
 		default:
 			dputstr( DBG_I2C | DBG_ERR, "i2c_master_complete: completed with I2ERR\n" );
-			/* if status indicates a retryable error, try again */
+			ws->delivery_attempts++;
+			
+			/* if status indicates a retryable error and we have not
+			 * exceeded max number of deliveries, try again */
 			/* back to the queue */
-			if ( WS_ACTIVE_MASTER_WRITE_PENDING == ws->ws_state ) {
+			if( ( WS_ACTIVE_MASTER_WRITE_PENDING == ws->ws_state ) 
+					&& ( ws->delivery_attempts < MAX_DELIVERY_ATTEMPTS ) ) 
+			{
 				ws_set_state( ws, WS_ACTIVE_MASTER_WRITE );
-			}
-			else if ( WS_ACTIVE_MASTER_READ_PENDING == ws->ws_state ) {
+			} 
+			else if( ( WS_ACTIVE_MASTER_READ_PENDING == ws->ws_state ) 
+					&& ( ws->delivery_attempts < MAX_DELIVERY_ATTEMPTS ) ) 
+			{
 				ws_set_state( ws, WS_ACTIVE_MASTER_READ );
 			} else {
-				/* invalid state drop it */
+				/* invalid state or exceeded retries - return error to upper layer */
 				if( ws->ipmi_completion_function ) {
 					(ws->ipmi_completion_function)( (void *)ws, 
 							XPORT_REQ_ERR );
@@ -995,7 +1123,7 @@ i2c_master_complete( IPMI_WS *ws, int status )
 	}
 }
 
-/* Transport completion routine */
+/* Slave op transport completion routine */
 void
 i2c_slave_complete( IPMI_WS *ws, int status )
 {
@@ -1023,5 +1151,124 @@ i2c_interface_disable( uchar channel, uchar link_id )
 {
 	I2CCONCLR( I2C_CTRL_FL_I2EN, channel );
 }
+
+
+/* pass the buffer to be used for slave reads from us */
+void
+i2c_set_read_buffer( unsigned char *buf, unsigned buf_len )
+{
+	i2c_read_buffer.ptr = buf;
+	i2c_read_buffer.len = buf_len;
+}
+
+
+/* set callback function for slave receive */
+void
+i2c_set_slave_receive_callback( void ( *callback_fn )( void *, int ) )
+{
+	i2c_slave_receive_callback = callback_fn;
+}
+
+/*==============================================================*/
+/*			TEST & DEBUG FUNCTIONS			*/
+/*==============================================================*/
+
+/* */
+/* write 16 bytes to the channel */
+void
+i2c_test_write( void )
+{
+	IPMI_WS *ws;
+
+	dputstr( DBG_I2C | DBG_INOUT, "i2c_test_write: ingress\n" );
+	
+	if( !( ws = ws_alloc() ) ) {
+		dputstr( DBG_I2C | DBG_ERR, "i2c_test_write: ws allocation failed\n" );
+		return;
+	}
+	
+	/* fill in the ws struct & the data buf */
+	ws->outgoing_protocol = IPMI_CH_PROTOCOL_IPMB;
+	ws->outgoing_medium = IPMI_CH_MEDIUM_IPMB;
+	ws->outgoing_channel = IPMI_CH_NUM_PRIMARY_IPMB;
+	ws->addr_out = remote_i2c_address;
+	ws->ipmi_completion_function = i2c_test_write_complete;
+	ws->len_out = 16; 
+	ws->pkt_out[0] = 0;
+	ws->pkt_out[1] = 1;
+	ws->pkt_out[2] = 2;
+	ws->pkt_out[3] = 3;
+	ws->pkt_out[4] = 4;
+	ws->pkt_out[5] = 5;
+	ws->pkt_out[6] = 6;
+	ws->pkt_out[7] = 7;
+	ws->pkt_out[8] = 8;
+	ws->pkt_out[9] = 9;
+	ws->pkt_out[10] = 10;
+	ws->pkt_out[11] = 11;
+	ws->pkt_out[12] = 12;
+	ws->pkt_out[13] = 13;
+	ws->pkt_out[14] = 14;
+	ws->pkt_out[15] = 15;
+
+	/* dispatch the request */
+	ws_set_state( ws, WS_ACTIVE_MASTER_WRITE );
+}
+
+/* i2c_test_write() app completion function */
+void
+i2c_test_write_complete( IPMI_WS *ws, int status )
+{
+	switch( status ) {
+		case I2ERR_NOERR:
+			dputstr( DBG_I2C | DBG_LVL1, "i2c_test_write_complete: successful\n" );
+			break;
+		default:
+			dputstr( DBG_I2C | DBG_ERR, "i2c_test_write_complete: failed\n" );
+			break;
+	}			
+	ws_free( ws );
+}
+
+/* read 16 bytes from the channel */
+void
+i2c_test_read( void )
+{
+	IPMI_WS *ws;
+
+	dputstr( DBG_I2C | DBG_INOUT, "i2c_test_read: ingress\n" );
+	if( !( ws = ws_alloc() ) ) {
+		dputstr( DBG_I2C | DBG_ERR, "i2c_test_read: ws allocation failed\n" );
+		return;
+	}
+	
+	/* fill in the ws struct */
+	ws->outgoing_protocol = IPMI_CH_PROTOCOL_IPMB;
+	ws->incoming_protocol = IPMI_CH_PROTOCOL_IPMB;
+	ws->outgoing_medium = IPMI_CH_MEDIUM_IPMB;
+	ws->outgoing_channel = IPMI_CH_NUM_PRIMARY_IPMB;
+	ws->addr_out = remote_i2c_address;
+	ws->ipmi_completion_function = i2c_test_read_complete;
+	ws->len_rcv = 16;	/* amount of data we want to read */
+	
+	/* dispatch the request */
+	ws_set_state( ws, WS_ACTIVE_MASTER_READ );	
+}
+
+/* i2c_test_read() app completion function */
+void
+i2c_test_read_complete( IPMI_WS *ws, int status )
+{
+	switch( status ) {
+		case I2ERR_NOERR:
+			dputstr( DBG_I2C | DBG_LVL1, "i2c_test_read_complete: successful\n" );
+			break;
+		default:
+			dputstr( DBG_I2C | DBG_ERR, "i2c_test_read_complete: failed\n" );
+			break;
+	}			
+	ws_free( ws );
+}
+
 
 
