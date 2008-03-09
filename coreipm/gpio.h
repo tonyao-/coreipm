@@ -4,7 +4,7 @@ coreIPM/gpio.h
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -44,9 +44,6 @@ support and contact details.
 #define GPIO_FRU_LED2		GPIO_LED_2
 #define GPIO_FRU_LED3		GPIO_LED_3
 
-#define HANDLE_SWITCH_OPEN	0
-#define HANDLE_SWITCH_CLOSED	1
-
 void gpio_initialize( void );
 int gpio_get_i2c_address( int address_type );
 void gpio_led_on( unsigned led_mask );
@@ -62,5 +59,5 @@ void gpio_warm_reset( void );
 void gpio_cold_reset( void );
 unsigned gpio_get_power_state( void );
 int gpio_get_handle_switch_state( void );
-
+int gpio_get_hardware_setting( void );
 

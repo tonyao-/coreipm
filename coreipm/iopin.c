@@ -1,6 +1,6 @@
 /*
 -------------------------------------------------------------------------------
-coreIPM/event.h
+coreIPM/iopin.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
@@ -23,16 +23,42 @@ See http://www.coreipm.com for documentation, latest information, licensing,
 support and contact details.
 -------------------------------------------------------------------------------
 */
+#include "lpc21nn.h"
+#include "iopin.h"
 
-void ipmi_get_pef_capabilities( IPMI_PKT *pkt );
-void ipmi_arm_pef_postpone_timer( IPMI_PKT *pkt );
-void ipmi_set_pef_config_params( IPMI_PKT *pkt );
-void ipmi_get_pef_config_params( IPMI_PKT *pkt );
-void ipmi_set_last_processed_event( IPMI_PKT *pkt );
-void ipmi_get_last_processed_event( IPMI_PKT *pkt );   
-void ipmi_platform_event( IPMI_PKT *pkt );
-void ipmi_set_event_receiver( IPMI_PKT *pkt );
-void ipmi_get_event_receiver( IPMI_PKT *pkt );
-int event_data_compare( uchar test_value, PEF_MASK *pef_mask );
-void ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len );
-void ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len );
+void
+iopin_set( unsigned long long bit )
+{
+	IOSET1 = ( unsigned )( bit >> 32 );
+	IOSET0 = ( unsigned )bit;	
+}
+
+void
+iopin_clear( unsigned long long bit )
+{
+	IOCLR1 = ( unsigned )( bit >> 32 );
+	IOCLR0 = ( unsigned )bit;	
+}
+
+unsigned  char
+iopin_get( unsigned long long bit )
+{
+	if( bit >= 0x100000000 )
+		return( IOPIN1 & ( unsigned )( bit >> 32 ) ) ;
+	else
+		return( IOPIN0 & ( unsigned )bit ) ;
+}
+
+/* set & reset IO bits simultaneously
+ * Only bit positions which have a 1 in the mask will be changed */
+void
+iopin_assign( unsigned long long bit, unsigned long long mask )
+{
+	unsigned int reg0, reg1;
+
+	reg0 = IOPIN0;
+	reg1 = IOPIN1;
+
+	IOPIN0 = ( reg0 & !mask ) | ( bit & mask );
+	IOPIN1 = ( reg1 & !( mask >>32 ) ) | ( ( bit & mask ) >> 32 );
+}

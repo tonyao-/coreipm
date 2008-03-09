@@ -4,7 +4,7 @@ coreIPM/event.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007  Gokhan Sozmen
+Copyright (C) 2007-2008  Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -32,6 +32,7 @@ contact details.
 #include "i2c.h"
 #include "timer.h"
 #include "ws.h"
+#include <string.h>
 
 #define PEF_PENDING_EVENT 0
 
@@ -527,7 +528,7 @@ ipmi_platform_event( IPMI_PKT *pkt )
 	else 
 		evt_log.last_evt_rcvd++;
 
-	memcpy( evt_log.evt_msg[evt_log.last_evt_rcvd],  &( req->event_data1 ), sizeof( GENERIC_EVENT_MSG ) );
+	memcpy( &evt_log.evt_msg[evt_log.last_evt_rcvd],  &( req->event_data1 ), sizeof( GENERIC_EVENT_MSG ) );
 	
 	// check if PEF postpone is in effect 
 	

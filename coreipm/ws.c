@@ -4,7 +4,7 @@ coreIPM/ws.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -33,7 +33,7 @@ support and contact details.
 
 /*======================================================================*
  * WORKING SET MANAGEMENT
-  */
+ */
 IPMI_WS	ws_array[WS_ARRAY_SIZE];
 
 
@@ -74,6 +74,13 @@ ws_alloc( void )
 void 
 ws_free( IPMI_WS *ws )
 {
+	int len, i;
+	char *ptr = (char *)ws;
+
+	len = sizeof( IPMI_WS );
+	for( i = 0 ; i < len ; i++ ) {
+		*ptr++ = 0;
+	}	
 	ws->incoming_protocol = IPMI_CH_PROTOCOL_NONE;
 	ws->ws_state = WS_FREE;
 }
@@ -133,7 +140,11 @@ void ws_process_work_list( void )
 	ws = ws_get_elem( WS_ACTIVE_IN );
 	if( ws ) {
 		ws_set_state( ws, WS_ACTIVE_IN_PENDING );
-		ipmi_process_pkt( ws );
+		// ipmi_process_pkt( ws );
+		if( ws->ipmi_completion_function )
+			( ws->ipmi_completion_function )( (void *)ws, XPORT_REQ_NOERR );
+		else
+			ws_process_incoming( ws ); // otherwise call the default handler
 	}
 	ws = ws_get_elem( WS_ACTIVE_MASTER_WRITE );
 	if( ws ) {
@@ -170,3 +181,13 @@ void ws_process_work_list( void )
 			i2c_master_read( ws );
 	}
 }
+
+/* Default handler for incoming packets */
+void
+ws_process_incoming( IPMI_WS *ws )
+{
+	ws_free( ws );
+	return;
+}
+
+

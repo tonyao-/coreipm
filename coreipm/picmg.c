@@ -4,7 +4,7 @@ coreIPM/picmg.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -37,6 +37,11 @@ support and contact details.
 #include "gpio.h"
 #include "serial.h"
 #include "fan.h"
+#include "module.h"
+#include "event.h"
+#ifdef MMC
+#include "mmc.h"
+#endif
 
 #define	FRU_DEV_ID	1
 #define SITE_ID		1
@@ -204,6 +209,23 @@ picmg_process_command( IPMI_PKT *pkt )
 		case ATCA_CMD_GET_IPMB_LINK_INFO:	/* Get IPMB Link Info */
 			picmg_get_ipmb_link_info( pkt );
 			break;
+#ifdef MMC
+		case ATCA_CMD_FRU_CONTROL_CAPABILITIES:	/* FRU control capabilities */
+			mmc_get_fru_control_capabilities( pkt );
+			break;
+		case ATCA_CMD_SET_AMC_PORT_STATE:
+			mmc_set_port_state( pkt );
+			break;
+		case ATCA_CMD_GET_AMC_PORT_STATE:
+			mmc_get_port_state( pkt );
+			break;
+		case ATCA_CMD_SET_CLOCK_STATE:
+			mmc_set_clock_state( pkt );
+			break;
+		case ATCA_CMD_GET_CLOCK_STATE:
+			mmc_get_clock_state( pkt );
+			break;
+#endif
 		default:
 			resp->completion_code = CC_INVALID_CMD;
 			resp->picmg_id = PICMG_ID;
@@ -418,7 +440,7 @@ picmg_m1_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 
 	/* if the Insertion Criteria Met condition exists then we can go to M2 state */
 	if( ( gpio_get_handle_switch_state() == HANDLE_SWITCH_CLOSED ) && ( !fru[fru_id].locked ) ) {
@@ -462,9 +484,40 @@ picmg_m2_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 	
 	/* dispatch message */
-	ipmi_send_event_req( msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 }
 
+
+
+/*
+   The FRU leaves state M4 when Extraction Criteria Met occurs. Extraction Criteria Met occurs
+   when the Deactivation-Locked bit is cleared. For FRUs with a Handle Switch, the Deactivation-
+   Locked bit is cleared by the act of opening the Handle. Software (FRU level, Shelf Manager, or
+   System Manager software) may also initiate a deactivation by clearing the Deactivation-Locked bit
+   explicitly. The FRU transitions to M5 and then sends an event to the Shelf Manager that the FRU
+   wishes to deactivate. The BLUE LED begins to blink at the Short Blink rate, indicating to the
+   operator that deactivation has been requested. Since the FRU might be carrying a high availability
+   function that cannot be shut down, the Shelf/System Manager determines if it is valid for the FRU
+   to deactivate. Normally, the request is granted and the Shelf Manager sends a “Set FRU Activation
+   (Deactivate FRU)” command to allow the FRU to begin deactivation. During the time the FRU is
+   in the M5 state, the Payload functionality is not impacted. That is, from the Payload’s perspective,
+   M4 and M5 are equivalent.
+   When the FRU receives the deactivation command, it moves on to the M6 state, and does whatever
+   steps are necessary to shut down the FRU’s Payload gracefully. The BLUE LED continues to blink
+   at the Short Blink rate. Prior to transitioning to the M1 state, the FRU must power down all Payload
+   functions and stop using at least its E-Keying-governed interfaces. It is the responsibility of the
+   IPM Controller representing the FRU to do these tasks. The Shelf Manager does not send “Set
+   Power Level” or “Set Port State” commands to the IPM Controller since the Shelf Manager does
+   not know when the IPM Controller no longer needs the resources.
+   Once the FRU’s Payload is powered down, it transitions to the M1 state and sends the event to the
+   Shelf Manager. The BLUE LED is turned on. When the Shelf Manager receives the M6 to M1
+   transition event, it reclaims the FRU’s power budget, removes the FRU from the SDR Repository,
+   and if the FRU is a Front Board, it disables all Ports on other Front Boards that share an interface
+   with this Front Board.
+   At some point after the FRU enters M1, it most likely is extracted from the Shelf. Most of the time,
+   the Shelf Manager does not get notification of the FRU transitioning to M0 since the FRU is no
+   longer present.
+   */
 
 
 void
@@ -531,7 +584,34 @@ picmg_handle_switch_state_change( uchar state, uchar fru_id )
 	}
 }
 
-
+/*
+   When the FRU receives the 
+   “Set FRU Activation (Activate FRU)” command, it sets the Deactivation-Locked
+   bit of the Activation Policy to 1b (true). This is done to enable the approach 
+   to Extraction Criteria Met that is discussed in Section 3.2.4.1.2, “Typical 
+   FRU extraction”.
+   Once the FRU reaches the M3 state, it sends the M2 to M3 event to the Shelf
+   Manager and waits for the Shelf Manager to begin power and/or cooling 
+   negotiation (see Section 3.9, “Shelf power and cooling”). At this point, the
+   BLUE LED is turned off. The Shelf Manager determines the proper power allocation
+   and sends a “Set Power Level” command to inform the FRU of the power budget it
+   has been allocated. The M3 state is also the place where the Shelf Manager 
+   computes the E-Keying requirement; however, the FRU can transition to M4 prior
+   to having received its EKeying. Though E-Keys are computed in M3, the E-keys
+   may be read earlier in the FRU’s life cycle (i.e., in either M2 or M3). When 
+   the Shelf Manager figures out which E-Keying to enable for the FRU, it sends 
+   “Set Port State” command(s) to inform the FRU of the enabled and disabled Ports
+   (see Section 3.7, “Electronic Keying”).
+   The FRU determines when it begins using the power budget, enabling the Port 
+   interfaces, and when it transitions to the M4 state. It might transition to M4 
+   as soon as power is applied or it might wait until it has received all of its 
+   Port enables or disables. When the FRU’s activation is complete, it sends an 
+   M3 to M4 event to inform the Shelf Manager that it is now active.
+   Once a FRU has reached the M4 state, the Shelf Manager’s job becomes monitoring
+   the FRU for health related events and, for each Front Board, managing changes 
+   to the E-Keying based on insertion or extraction of other Front Boards that 
+   share an interface with that Front Board.
+   */
 void
 picmg_set_fru_activation( IPMI_PKT *pkt )
 {
@@ -599,23 +679,12 @@ picmg_m3_state( unsigned fru_id )
 	msg.sensor_type = IPMI_SENSOR_HOT_SWAP;
 	msg.sensor_number = 0;
 	msg.evt_direction = IPMI_EVENT_TYPE_GENERIC_AVAILABILITY;
-	msg.evt_data1 = 0;		/* Event Data 1
-					   [7:4] = Ah (OEM code in Event Data 2,
-					   OEM code in Event Data 3)
-					   [3:0] = Current State  */
-	msg.evt_data2 = 0;		/* Event Data 2
-					   [7:4] = Cause of state change. 
-					   See Table 3-20, “Cause of State Change values,” 
-					   for values.
-					   [3:0] = Previous State */
-	msg.evt_data3 = 0;		/* Event Data 3
-					   [7:0] = FRU Device ID */
 	msg.evt_data1 = 0xa << 4 | FRU_STATE_M3_ACTIVATION_IN_PROGRESS;
 	msg.evt_data2 = STATE_CH_NORMAL << 4 | FRU_STATE_M2_ACTIVATION_REQUEST;
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 
 }
 
@@ -653,7 +722,7 @@ picmg_m4_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 
 }
 
@@ -691,7 +760,7 @@ picmg_m5_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 
 }
 
@@ -732,7 +801,7 @@ picmg_m6_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 
 	picmg_m1_state( fru_id );
 }
@@ -851,12 +920,19 @@ picmg_fru_control( IPMI_PKT *pkt )
 	if ( req->fru_dev_id < MAX_FRU_DEV_ID + 1 ) {
 		switch( req->fru_control_options ) {
 			case FRU_CONTROL_COLD_RESET:  /* add architecture dependent code here */
+				module_cold_reset( req->fru_dev_id );
 				break;
 			case FRU_CONTROL_WARM_RESET:
+				module_warm_reset( req->fru_dev_id );
 				break;
 			case FRU_CONTROL_GRACEFUL_REBOOT:
+				module_graceful_reboot( req->fru_dev_id );
 				break;
 			case FRU_CONTROL_ISSUE_DIAG_INT:
+				module_issue_diag_int( req->fru_dev_id );
+				break;
+			case FRU_CONTROL_QUIESCE:
+				module_quiesce( req->fru_dev_id );
 				break;
 			default:
 				resp->completion_code = CC_PARAM_OUT_OF_RANGE;

@@ -1,6 +1,6 @@
 /*
 -------------------------------------------------------------------------------
-coreIPM/event.h
+coreIPM/main.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
@@ -23,16 +23,47 @@ See http://www.coreipm.com for documentation, latest information, licensing,
 support and contact details.
 -------------------------------------------------------------------------------
 */
+#include "ipmi.h"
+#include "debug.h"
+#include "ws.h"
+#include "timer.h"
+#include "gpio.h"
+#include "module.h"
+#include "serial.h"
+#include "i2c.h"
 
-void ipmi_get_pef_capabilities( IPMI_PKT *pkt );
-void ipmi_arm_pef_postpone_timer( IPMI_PKT *pkt );
-void ipmi_set_pef_config_params( IPMI_PKT *pkt );
-void ipmi_get_pef_config_params( IPMI_PKT *pkt );
-void ipmi_set_last_processed_event( IPMI_PKT *pkt );
-void ipmi_get_last_processed_event( IPMI_PKT *pkt );   
-void ipmi_platform_event( IPMI_PKT *pkt );
-void ipmi_set_event_receiver( IPMI_PKT *pkt );
-void ipmi_get_event_receiver( IPMI_PKT *pkt );
-int event_data_compare( uchar test_value, PEF_MASK *pef_mask );
-void ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len );
-void ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len );
+extern unsigned long lbolt;
+/*==============================================================
+ * main()
+ *==============================================================*/
+int main()
+{
+	unsigned long time;
+
+	/* Initialize system */
+	ws_init();
+	gpio_initialize();
+	timer_initialize();
+	i2c_initialize();
+	uart_initialize();
+	ipmi_initialize();
+	module_init();
+
+	dprintf( DBG_I2C | DBG_LVL1, "Hello World");
+	
+	time = lbolt;
+	
+	/* Do forever */
+	while( 1 )
+	{
+		/* Blink system activity LEDs once every second */
+		if( ( time + 2 ) < lbolt ) {
+			time = lbolt;
+			gpio_toggle_activity_led();
+		}
+		ws_process_work_list();
+		terminal_process_work_list();
+		timer_process_callout_queue();
+	}
+}
+

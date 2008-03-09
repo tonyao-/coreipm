@@ -1,6 +1,6 @@
 /*
 -------------------------------------------------------------------------------
-coreIPM/event.h
+coreIPM/mmc.h
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
@@ -23,16 +23,9 @@ See http://www.coreipm.com for documentation, latest information, licensing,
 support and contact details.
 -------------------------------------------------------------------------------
 */
-
-void ipmi_get_pef_capabilities( IPMI_PKT *pkt );
-void ipmi_arm_pef_postpone_timer( IPMI_PKT *pkt );
-void ipmi_set_pef_config_params( IPMI_PKT *pkt );
-void ipmi_get_pef_config_params( IPMI_PKT *pkt );
-void ipmi_set_last_processed_event( IPMI_PKT *pkt );
-void ipmi_get_last_processed_event( IPMI_PKT *pkt );   
-void ipmi_platform_event( IPMI_PKT *pkt );
-void ipmi_set_event_receiver( IPMI_PKT *pkt );
-void ipmi_get_event_receiver( IPMI_PKT *pkt );
-int event_data_compare( uchar test_value, PEF_MASK *pef_mask );
-void ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len );
-void ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len );
+#define MAX_FRU_DEV_ID  0
+void mmc_set_port_state( IPMI_PKT *pkt );
+void mmc_get_port_state( IPMI_PKT *pkt );
+void mmc_set_clock_state( IPMI_PKT *pkt );
+void mmc_get_clock_state( IPMI_PKT *pkt );
+void mmc_get_fru_control_capabilities( IPMI_PKT *pkt );

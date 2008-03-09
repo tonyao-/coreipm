@@ -4,7 +4,7 @@ coreIPM/ipmi.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -39,6 +39,7 @@ support and contact details.
 #include "picmg.h"
 #include "event.h"
 #include "sensor.h"
+#include <string.h>
 
 #define FRU_INVENTORY_CACHE_ARRAY_SIZE	4
 
@@ -106,12 +107,10 @@ void ipmi_get_fru_inventory_area_info( IPMI_PKT *pkt );
 void ipmi_read_fru_data( IPMI_PKT *pkt );
 void fru_read_complete( void *fru_ws, int status );
 void ipmi_write_fru_data( IPMI_PKT *pkt );
-uchar ipmi_calculate_checksum( char *ptr, int numchar );
 void ipmi_wd_expired( uchar *arg );
 void ipmi_process_nvstore_req( IPMI_PKT *pkt );
 void ipmi_send_message_cmd_complete( void *ws, int status );
 void ipmi_send_message_cmd( IPMI_PKT *pkt );
-uchar ipmi_get_next_seq( uchar *seq );
 void ipmi_seq_free( uchar seq );
 void init_fru_cache( void );
 
@@ -247,6 +246,7 @@ ipmi_process_pkt( IPMI_WS * ws )
 				}
 			}
 			
+			/* TODO: check responder_slave_address to route this request if required */
 			/* NOTE: BMC LUN 10b is used for delivering messages to 
 			 * the System Interface. The BMC automatically routes any
 			 * messages it receives via LUN 10b to the Receive Message Queue.
@@ -363,7 +363,7 @@ ipmi_process_pkt( IPMI_WS * ws )
 				tm_resp->netfn = tm_req->netfn + 1;
 				tm_resp->responder_lun = tm_req->responder_lun;
 				tm_resp->req_seq = tm_req->req_seq;
-				tm_resp->bridge = tm_req->bridge; 
+				tm_resp->bridge = tm_req->bridge; /* TODO check */
 				tm_resp->command = tm_req->command;
 				ws->len_out = sizeof(IPMI_TERMINAL_MODE_RESPONSE)
 					- TERM_MODE_RESP_MAX_DATA_LEN + pkt->hdr.resp_data_len;
@@ -445,7 +445,7 @@ ipmi_process_response( IPMI_PKT *pkt, unsigned char completion_code )
 	}
 	
 	memcpy( req_ws->pkt.resp, target_ws->pkt.resp, WS_BUF_LEN ); 
-							   
+							   // TODO: make sure pkt-> pointers are set properly
 	req_ws->len_out = target_ws->len_in;
 	
 	ws_free( resp_ws );
@@ -487,7 +487,7 @@ ipmi_process_response( IPMI_PKT *pkt, unsigned char completion_code )
 			tm_resp->netfn = tm_req->netfn + 1;
 			tm_resp->responder_lun = tm_req->responder_lun;
 			tm_resp->req_seq = tm_req->req_seq;
-			tm_resp->bridge = tm_req->bridge;
+			tm_resp->bridge = tm_req->bridge; /* TODO check */
 			tm_resp->command = tm_req->command;
 			req_ws->len_out = sizeof(IPMI_TERMINAL_MODE_RESPONSE)
 				- TERM_MODE_RESP_MAX_DATA_LEN + pkt->hdr.resp_data_len;
@@ -859,6 +859,7 @@ ipmi_wd_expired(uchar * arg)
 		wd_timer.pre_timeout_enabled = 0;
 
 		switch( wd_timer.pre_timeout_intr ) {
+			/* TODO: fill in as required */
 			case WD_PRE_TIMEOUT_INTR_SMI:
 			case WD_PRE_TIMEOUT_INTR_NMI:
 			case WD_PRE_TIMEOUT_INTR_MSG:
@@ -876,6 +877,7 @@ ipmi_wd_expired(uchar * arg)
 	}
 
 	switch( wd_timer.timeout_action ) { 
+		/* TODO: fill in as required, log if required */
 		case WD_TIMEOUT_ACTION_NONE:
 			break;
 		case WD_TIMEOUT_ACTION_HARD_RESET:
@@ -1084,7 +1086,7 @@ ipmi_read_fru_data( IPMI_PKT *pkt )
 		}
 		
 		/* we have a payload limit for IPMB */
-		if( resp->count_returned > 20 ) 
+		if( resp->count_returned > 20 ) /* TODO check size */
 			resp->count_returned = 20;
 		
 		memcpy( resp->data, fru_inventory_cache[i].fru_data + fru_inventory_offset,
@@ -1132,17 +1134,19 @@ fru_read_complete( void *ws, int status )
 	IPMI_WS *fru_ws = ( (IPMI_WS *)( ws ) );
 	IPMI_PKT *pkt = &req_ws->pkt;;
 
+	//TODO copy data to cache
+
 	/* send back response */
 	req_ws->outgoing_protocol = req_ws->incoming_protocol;
 	req_ws->outgoing_medium = req_ws->incoming_medium;
-	pkt->hdr.resp_data_len = fru_ws->len_in; 
+	pkt->hdr.resp_data_len = fru_ws->len_in; // TODO Check size
 	
 	switch( req_ws->outgoing_protocol ) {
 		case IPMI_CH_PROTOCOL_IPMB: {
 			IPMI_IPMB_RESPONSE *ipmb_resp = ( IPMI_IPMB_RESPONSE * )&( req_ws->pkt_out );
 			IPMI_IPMB_REQUEST *ipmb_req = ( IPMI_IPMB_REQUEST * )&( req_ws->pkt_in );
 			
-			memcpy(ipmb_resp->data, fru_ws->pkt_in, IPMB_RESP_MAX_DATA_LEN ); 
+			memcpy(ipmb_resp->data, fru_ws->pkt_in, IPMB_RESP_MAX_DATA_LEN ); //TODO check size
 			ipmb_resp->requester_slave_addr = ipmb_req->requester_slave_addr;
 			ipmb_resp->netfn = ipmb_req->netfn + 1;
 			ipmb_resp->requester_lun = ipmb_req->requester_lun;
@@ -1152,9 +1156,9 @@ fru_read_complete( void *ws, int status )
 			ipmb_resp->responder_lun = ipmb_req->responder_lun;
 			ipmb_resp->command = ipmb_req->command;
 			ipmb_resp->completion_code = CC_NORMAL;
-			/* The location of data_checksum field is used as a placeholder to indicate
-			 * that a checksum follows the data field. The location of the data_checksum
-			 * depends on the size of the data preceeding it.*/
+			/* The location of data_checksum field is bogus.
+			 * It's used as a placeholder to indicate that a checksum follows the data field.
+			 * The location of the data_checksum depends on the size of the data preceeding it.*/
 			ipmb_resp->data_checksum = 
 				ipmi_calculate_checksum( &ipmb_resp->responder_slave_addr, 
 					pkt->hdr.resp_data_len + 4 ); 
@@ -1168,12 +1172,12 @@ fru_read_complete( void *ws, int status )
 		case IPMI_CH_PROTOCOL_TMODE: {		/* Terminal Mode */
 			IPMI_TERMINAL_MODE_RESPONSE *tm_resp = ( IPMI_TERMINAL_MODE_RESPONSE * )&( req_ws->pkt_out );
 			IPMI_TERMINAL_MODE_REQUEST *tm_req = ( IPMI_TERMINAL_MODE_REQUEST * )&( req_ws->pkt_in );
-			memcpy(tm_resp->data, fru_ws->pkt_in, IPMB_RESP_MAX_DATA_LEN ); 
+			memcpy(tm_resp->data, fru_ws->pkt_in, IPMB_RESP_MAX_DATA_LEN ); //TODO check size
 
 			tm_resp->netfn = tm_req->netfn + 1;
 			tm_resp->responder_lun = tm_req->responder_lun;
 			tm_resp->req_seq = tm_req->req_seq;
-			tm_resp->bridge = tm_req->bridge; 
+			tm_resp->bridge = tm_req->bridge; /* TODO check */
 			tm_resp->command = tm_req->command;
 			req_ws->len_out = sizeof(IPMI_TERMINAL_MODE_RESPONSE)
 				- TERM_MODE_RESP_MAX_DATA_LEN + pkt->hdr.resp_data_len;
@@ -1201,6 +1205,7 @@ ipmi_write_fru_data( IPMI_PKT *pkt )
 {
 	WRITE_FRU_DATA_CMD_REQ *req = ( WRITE_FRU_DATA_CMD_REQ * )(pkt->req);
 	WRITE_FRU_DATA_CMD_RESP *resp = ( WRITE_FRU_DATA_CMD_RESP * )(pkt->resp);
+	/* TODO */
 }
 
 void
@@ -1231,11 +1236,68 @@ init_fru_cache( void )
 
 
 /*======================================================================*/
+/* BMC MESSAGE BRIDGING
+ 
+Message Bridging Mechanism by Source and Destination
+								BMC tracks
+						Delivery	pending
+Message Type and direction			Mechanism	responses
+--------------------------------------------------------------------------
+Request or Response from System Interface 	Send Message 	no
+to any other channel
+
+Request or Response to System Interface  	BMC LUN 10b 	no
+from any other channel
+
+Request from any channel except System  	Send Message 	yes
+Interface to IPMB
+
+Response from IPMB to any channel except 	BMC LUN 00b 	yes
+System Interface
+ 
+Request from any channel (except System 	Send Message 	yes
+Interface) to PCI Management Bus
+
+Request from PCI Management bus to any 		BMC LUN 00b 	yes
+channel except System Interface
+
+Request from Serial to LAN 			Send Message 	yes
+
+Response LAN to Serial 				BMC LUN 00b 	yes
+
+Request from LAN to Serial 			Send Message 	yes
+
+Response from Serial to LAN 			BMC LUN 00b 	yes
+ */
+/*======================================================================*/
+
+
+/*======================================================================*/
 /* 
  * BMC Device and Messaging Commands
  */
 /*======================================================================*/
-
+/*
+BMC Message Bridging
+BMC Message Bridging provides a mechanism for routing IPMI Messages between different media. Bridging is
+only specified for delivering messages between different channels; i.e. it is not specified for delivering messages
+between two sessions on the same channel.
+In IPMI 1.0, bridging was primarily specified just for providing access between SMS (System Interface) and the
+IPMB. With IPMI 1.5, these mechanisms have been extended to support delivering IPMI messages between
+active connections / sessions on any IPMI Messaging media connected to the BMC.
+There are three mechanisms for bridging messages between different media connected to the BMC, depending on
+what the target of the message is:
+• BMC LUN 10b is used for delivering messages to the System Interface. The BMC automatically routes any
+messages it receives via LUN 10b to the Receive Message Queue.
+• Send Message command from System Interface is used for delivering messages to other channels, such as
+the IPMB. The messages appear on the channel as if they’ve come from BMC LUN 10b. Thus, if the
+message is a request message, the response will go to BMC LUN 10b and the BMC will automatically place
+the response into the Receive Message Queue for retrieval. System software is responsible for matching the
+response up with the original request, thus the ‘No Tracking’ setting in the Send Message command is used.
+• Send Message command with response tracking. This format of Send Message command is used with
+response tracking for bridging request messages to all other channels except when the System Interface is the
+source or destination of the message.
+*/ 
 void
 ipmi_send_message_cmd( IPMI_PKT *pkt )
 {
@@ -1265,7 +1327,7 @@ ipmi_send_message_cmd( IPMI_PKT *pkt )
 		return;
 	}
 
-	switch( req->tracking ) {
+	switch( req->tracking ) { /* TODO */
 		case BRIDGE_NO_TRACKING:
 		case BRIDGE_TRACK_REQ:
 		case BRIDGE_SEND_RAW:
@@ -1341,6 +1403,28 @@ ipmi_send_message_cmd( IPMI_PKT *pkt )
 	ws_set_state( target_ws, WS_ACTIVE_MASTER_WRITE );				
 }
 
+/*  This para from "- IPMI - IPMI v1.5 Addenda, Errata, and Clarifications
+Intelligent Platform Management Interface Specification v1.5, revision 1.1
+Addendum Document Revision 5 1/29/04". 
+
+ When forwarding a response from IPMB to a different channel, only one header should be present in the response.
+When a request message is bridged to another channel by encapsulating it in a Send Message command (from a source
+channel other than the system interface), the BMC immediately returns a response to the Send Message command itself.
+Meanwhile, the request is extracted from the Send Message command and forwarded to the specified target channel.
+The Send Message command must be configured to direct the BMC to keep track of data in the request so when the
+response comes back from the target device it can be forwarded by the BMC back to the channel that delivered the
+original Send Message command to the BMC. When the response comes back from the target, the BMC uses the
+tracking information to format the response for the given channel. To the party that initiated the Send Message
+command, the response will appear as if the encapsulated request was directly executed by the BMC. I.e. it will look
+like an asynchronously generated response message.
+For example, suppose a Get Device ID command has been encapsulated in a Send Message command directed to the
+IPMB from a LAN channel. The BMC will immediately send a response to the Send Message command back on LAN.
+The BMC will extract the encapsulated Get Device ID message content and format it as a Get Device ID request for
+IPMB. The target device on IPMB responds with a Get Device ID response message in IPMB format. The BMC takes
+the tracking information that was stored when the Send Message command was issued, and uses it to create a Get
+Device ID response in LAN format. The Responder’s address information in that response will be that of the BMC, not
+of the device on IPMB that the request was targeted to.
+ */
  
 
 /* completion function is called when target_ws is successfully sent */

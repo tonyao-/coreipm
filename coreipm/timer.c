@@ -4,7 +4,7 @@ coreIPM/timer.c
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
-Copyright (C) 2007 Gokhan Sozmen
+Copyright (C) 2007-2008 Gokhan Sozmen
 -------------------------------------------------------------------------------
 coreIPM is free software; you can redistribute it and/or modify it under the 
 terms of the GNU General Public License as published by the Free Software
@@ -52,13 +52,21 @@ CQE *cq_alloc( void );
 void cq_free( CQE *cqe );
 CQE *cq_get_expired_elem( unsigned long current_tick );
 void cq_set_cqe_state( CQE *cqe, unsigned state );
+#if defined (__CA__) || defined (__CC_ARM)
+void hardclock( void ) __irq;
+#elif defined (__GNUC__)
+void hardclock( void ) __attribute__ ((interrupt));
+#endif
 
 /*==============================================================
  * hardclock()
  *==============================================================*/
 /* Timer Counter 0 Interrupt executes each 100ms */
-void 
-hardclock ( void ) __irq  
+#if defined (__CA__) || defined (__CC_ARM)
+void hardclock( void ) __irq  
+#elif defined (__GNUC__)
+void hardclock( void )
+#endif
 {
 	lbolt++;
 	T0IR = 1;		/* Clear interrupt flag */
