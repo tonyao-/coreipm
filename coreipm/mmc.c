@@ -144,7 +144,7 @@ unsigned char
 module_get_i2c_address( void )
 {
 #ifdef DEBUG_MMC
-	return( 0x40 );
+	return( 0x72 );
 #else
 	unsigned char g0_0, g1_0, g2_0, g0_1, g1_1, g2_1;
 	int index;
@@ -349,7 +349,7 @@ mmc_hot_swap_state_change( unsigned char new_state )
 	msg_req.evt_data1 = new_state;	
 
 	/* dispatch message */
-	ipmi_send_event_req( &msg_req, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg_req, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 }
 
 void
@@ -377,7 +377,7 @@ void EINT_ISR_0( void )
 		return;
 	}
 	
-	handle_state = iopin_get( EINT_HOT_SWAP_HANDLE );
+	handle_state = iopin_get( ( unsigned long long )EINT_HOT_SWAP_HANDLE );
 
 	if( handle_state != hot_swap_handle_last_state ) {
 		( handle_state == HANDLE_SWITCH_OPEN )?
@@ -858,4 +858,12 @@ connections are described in the Module’s FRU Information.
 
 */
 
+void
+module_event_handler( GENERIC_EVENT_MSG *evt_msg )
+{
+}
 
+void
+module_term_process( unsigned char * ptr )
+{
+}

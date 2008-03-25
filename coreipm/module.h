@@ -29,5 +29,8 @@ void module_warm_reset( unsigned char dev_id );
 void module_graceful_reboot( unsigned char dev_id );
 void module_issue_diag_int( unsigned char dev_id );
 void module_quiesce( unsigned char dev_id );
+void module_event_handler( GENERIC_EVENT_MSG *evt_msg );
+unsigned char module_get_i2c_address( void );
+void module_term_process( unsigned char * );
 
 

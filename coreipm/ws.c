@@ -31,6 +31,8 @@ support and contact details.
 #include "serial.h"
 #include "ws.h"
 
+extern unsigned long lbolt;
+
 /*======================================================================*
  * WORKING SET MANAGEMENT
  */
@@ -96,10 +98,18 @@ ws_get_elem( unsigned state )
 	{
 		ptr = &ws_array[i];
 		if( ptr->ws_state == state ) {
-			ws = ptr;
-			break;
+			if( ws ) {
+				if( ptr->timestamp < ws->timestamp ) 
+					ws = ptr;
+			} else {
+				ws = ptr;
+			}
 		}
 	}
+	
+	if( ws )
+		ws->timestamp = lbolt;
+	
 	return ws;
 }
 
@@ -156,7 +166,7 @@ void ws_process_work_list( void )
 				break;
 				
 			case IPMI_CH_MEDIUM_SERIAL:	/* Asynch. Serial/Modem (RS-232) 	*/
-				serial_tm_send( ws );
+				serial_tm_send( ( unsigned char * )ws );
 				break;
 				
 			case IPMI_CH_MEDIUM_ICMB10:	/* ICMB v1.0 				*/

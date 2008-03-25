@@ -31,6 +31,7 @@ support and contact details.
 #include "module.h"
 #include "serial.h"
 #include "i2c.h"
+#include "iopin.h"
 
 extern unsigned long lbolt;
 /*==============================================================
@@ -42,6 +43,7 @@ int main()
 
 	/* Initialize system */
 	ws_init();
+	iopin_initialize();
 	gpio_initialize();
 	timer_initialize();
 	i2c_initialize();

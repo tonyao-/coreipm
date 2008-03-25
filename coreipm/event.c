@@ -32,6 +32,7 @@ contact details.
 #include "i2c.h"
 #include "timer.h"
 #include "ws.h"
+#include "module.h"
 #include <string.h>
 
 #define PEF_PENDING_EVENT 0
@@ -533,7 +534,7 @@ ipmi_platform_event( IPMI_PKT *pkt )
 	// check if PEF postpone is in effect 
 	
 	// call event handler 
-	ipmi_event_handler( &( req->event_data1 ) );
+	ipmi_event_handler( ( GENERIC_EVENT_MSG * )&( req->EvMRev ) );
 }
 
 void
@@ -568,6 +569,7 @@ ipmi_event_handler( GENERIC_EVENT_MSG *evt_msg )
 	}
 
 	/* Now handle the alerts if any */
+	module_event_handler( evt_msg );
 }
 
 	

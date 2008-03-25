@@ -43,10 +43,14 @@ iopin_clear( unsigned long long bit )
 unsigned  char
 iopin_get( unsigned long long bit )
 {
+	unsigned char retval;
+
 	if( bit >= 0x100000000 )
-		return( IOPIN1 & ( unsigned )( bit >> 32 ) ) ;
+		retval = ( IOPIN1 & ( unsigned )( bit >> 32 ) ) ? 1: 0;
 	else
-		return( IOPIN0 & ( unsigned )bit ) ;
+		retval = ( IOPIN0 & ( unsigned )bit ) ? 1: 0 ;
+
+	return retval;
 }
 
 /* set & reset IO bits simultaneously

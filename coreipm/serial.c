@@ -86,6 +86,7 @@ responsible for handshaking between a modem peripheral and the UART1.
 #include "debug.h"
 #include "gpio.h"
 #include "error.h"
+#include "module.h"
 
 #define uchar unsigned char
 
@@ -550,7 +551,11 @@ Return Value
 */
  
 int 
-putchar( int ch )	// Write character to the debug serial port    
+#if defined (__CA__) || defined ( __GNUC__ )
+putchar( int ch )	// Write character to the debug serial port 
+#elif defined (__CC_ARM)  
+sendchar( int ch )	// Write character to the debug serial port 
+#endif	
 {
 	switch( UART_DEBUG ) {
 		case UART_0:
@@ -569,6 +574,7 @@ Writes a character to the stream.
 If there are no errors, the same character that has been written is returned.
 If an error occurs, EOF is returned and the error indicator is set.
 */
+/*
 int
 putc( int ch, int handle ) 
 {
@@ -589,7 +595,7 @@ putc( int ch, int handle )
 	}
 	return( ch );		
 }
-
+*/
 
 /*
 fputs()
@@ -597,6 +603,7 @@ fputs()
 On success, a non-negative value is returned.
 On error, the function returns EOF.
 */
+/*
 int 
 fputs ( const char * str, int handle )
 {
@@ -610,7 +617,7 @@ fputs ( const char * str, int handle )
 	}
 	return( ESUCCESS );
 }
-
+*/
 
 /*
 fflush()
@@ -618,6 +625,7 @@ fflush()
 On success, a non-negative value is returned.
 On error, the function returns EOF.
 */
+/*
 int
 fflush( int handle )
 {
@@ -633,7 +641,7 @@ fflush( int handle )
 	}
 	return( ESUCCESS );
 }	
-
+*/
 
 int 
 putchar_1( int ch )	// Write character to Serial Port 1   
@@ -660,7 +668,7 @@ putchar_0( int ch )	// Write character to Serial Port 0
 
 	return ( U0THR = ch );
 }
-
+/*
 int 
 getchar( void )		// Read character from the debug sSerial port 
 {
@@ -672,7 +680,7 @@ getchar( void )		// Read character from the debug sSerial port
 	}
 
 }
-
+*/
 int 
 getchar_1( void )		// Read character from Serial Port 
 {	
@@ -859,7 +867,10 @@ term_process( uchar *buf )
 		putstr( "H:?? T:?? V:?? PS:?? C:?? D:?? S:?? O:??]\n" );
 		return;
 	}
-
+	
+	/* perform any module specific processing */
+	module_term_process( ptr );
+	
 	putstr( "[ERR]\n" );
 	return;
 

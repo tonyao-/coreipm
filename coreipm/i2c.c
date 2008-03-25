@@ -95,6 +95,7 @@ taken
 #include "gpio.h"
 #include "serial.h"
 #include "debug.h"
+#include "module.h"
 
 #define MAX_DELIVERY_ATTEMPTS 1
 
@@ -176,6 +177,7 @@ void i2c_initialize( void )
 	// remote_i2c_address = gpio_get_i2c_address( I2C_ADDRESS_REMOTE );
 	/* TODO currently uses jumper J8 to determine the address
 	 * The 20 & 30 are test values and will likely be changed */
+	/*
 	if( gpio_get_hardware_setting() ) {
 		local_i2c_address = 0x20;
 		remote_i2c_address = 0x30;
@@ -183,7 +185,11 @@ void i2c_initialize( void )
 		local_i2c_address = 0x30;
 		remote_i2c_address = 0x20;
 	}
-
+	*/
+	local_i2c_address = module_get_i2c_address();
+#ifdef MMC
+	remote_i2c_address = 0x20;
+#endif
 	
 	for( channel = 0 ; channel < I2C_NUM_CHANNELS; channel++ ) {
 		i2c_context[channel].state = I2STAT_NADDR_SLAVE_MODE;
@@ -880,7 +886,7 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 
 	if( start_timer && i2c_enable_timeout ) {
 		timer_add_callout_queue( (void *)&context->state_transition_timer,
-		       	10*HZ, i2c_timeout, context ); /* 10 sec timeout */
+		       	10*HZ, i2c_timeout, ( unsigned char * )context ); /* 10 sec timeout */
 	}
 }
 
@@ -1064,7 +1070,7 @@ i2c_master_write( IPMI_WS *ws )
 		 * here so we can recover and try a different channel or abort */
 		if( i2c_enable_timeout ) {
 			timer_add_callout_queue( (void *)&context->state_transition_timer,
-		       		10*HZ, i2c_timeout, context ); /* 10 sec timeout */
+		       		10*HZ, i2c_timeout, ( unsigned char * )context ); /* 10 sec timeout */
 		}
 	} else {
 		/* back to the queue */
