@@ -29,6 +29,9 @@ support and contact details.
 #include "ipmcio.h"
 #include "serial.h"
 #include "debug.h"
+#include "lpc21nn.h"
+#include "mmcio.h"
+#include "iopin.h"
 
 
 
@@ -37,7 +40,7 @@ void iopin_initialize( void )
 {
 
 	/* Initialize Pin Connect Block */
-	PINSEL0 |=  
+	PINSEL0 =  
 		PS0_P0_0_TXD_UART_0 |	
 		PS0_P0_1_RXD_UART_0 |
 		PS0_P0_2_SCL_I2C_0  |
@@ -45,7 +48,7 @@ void iopin_initialize( void )
 		PS0_P0_4_SCK_0      |
 		PS0_P0_5_MISO_0     |
 		PS0_P0_6_MOSI_0     |
-		PS0_P0_7_PWM_2      |
+		PS0_P0_7_EINT_2     |
 		PS0_P0_8_TDX_UART_1 |
 		PS0_P0_9_RDX_UART_1 |
 		PS0_P0_10_AD_1_2    |
@@ -55,7 +58,7 @@ void iopin_initialize( void )
 		PS0_P0_14_SDA_I2C_1 |
 		PS0_P0_15_AD_1_5;		
 	
-	PINSEL1 |=  
+	PINSEL1 =  
 		PS1_P0_16_EINT_0    |
 		PS1_P0_17_GPIO      |
 		PS1_P0_18_GPIO      |
@@ -78,6 +81,8 @@ void iopin_initialize( void )
 	 * Bit 0 - 31 in IO0DIR/IO0SET corresponds to P0.0 - P0.31.
 	 * Bit 0 - 31 in IO1DIR/IO1SET corresponds to P1.0 - P1.31. */ 
 
+	iopin_clear( PAYLOAD_POWER );	// start with payload power off
+
 	IODIR0 = ( unsigned int ) (
 		P1		|	
 		PAYLOAD_POWER	|
@@ -88,25 +93,4 @@ void iopin_initialize( void )
 	
 	IODIR1 = ( unsigned int ) ( 0 );
 
-	// Read backplane address
-
-	// discover & initialize i2c interfaces
-
-	// payload power-up
-	
-	// e-keying
-		
-	// determine if there are AMC cards to manage
-	
-	// AMC management signals handler
-	
-	
 }
-
-/* Module specific handlers
- *
- * - hot swap switch
- * - m-states
- *   event receiver for AMC modules
-
-

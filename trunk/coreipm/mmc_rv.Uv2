@@ -1,7 +1,7 @@
 ### uVision2 Project, (C) Keil Software
 ### Do not modify !
 
-Target (Target 1), 0x0005 // Tools: ''
+Target (Target 1), 0x0004 // Tools: 'ARM-ADS'
 
 Group (Source Group 1)
 
@@ -40,8 +40,9 @@ File 1,1,<.\mmc.c><mmc.c>
 File 1,1,<.\spi.c><spi.c>
 File 1,1,<.\flash.c><flash.c>
 File 1,1,<.\main.c><main.c>
-File 1,2,<.\Startup_carm.s><Startup_carm.s>
 File 1,1,<.\mmcio.c><mmcio.c>
+File 1,2,<.\Startup_rv.s><Startup_rv.s>
+File 1,1,<.\remap.c><remap.c>
 
 
 Options 1,0,0  // Target 'Target 1'
@@ -69,15 +70,15 @@ Options 1,0,0  // Target 'Target 1'
  EnvReg (ÿPhilips\)
  OrgReg (ÿPhilips\)
  TgStat=16
- OutDir (.\mmc_carm_obj\)
- OutName (mmc)
+ OutDir (.\mmc_rv_obj\)
+ OutName (mmc_rv)
  GenApp=1
  GenLib=0
  GenHex=0
  Debug=1
- Browse=1
- LstDir (.\mmc_carm_lst\)
- HexSel=0
+ Browse=0
+ LstDir (.\mmc_rv_lst\)
+ HexSel=1
  MG32K=0
  TGMORE=0
  RunUsr 0 0 <>
@@ -87,22 +88,26 @@ Options 1,0,0  // Target 'Target 1'
  CrunUsr 0 0 <>
  CrunUsr 1 0 <>
  SVCSID <>
- KACPU (ARM7TDMI)
- TKAFL { 0,27,183,0,0,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
- KIROM { 1,0,0,0,0,0,0,8,0 }
- KIRAM { 0,0,0,0,64,0,128,0,0 }
- KXRAM { 0,0,0,0,0,0,0,0,0 }
- KAOCM { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
- KCAFLG { 197,152,16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
- KCAMSC ()
- KCADEF (MMC)
- KCAUDF ()
- KCAINC ()
- KAAFLG { 20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
- KAAMSC ()
- KAASET ()
- KAARST ()
- KAAINC ()
+ GLFLAGS=1790
+ ADSFLGA { 243,31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
+ ACPUTYP (ARM7TDMI)
+ ADSTFLGA { 0,12,0,18,163,0,0,66,0,0,0,0,0,0,0,0,0,0,0,0 }
+ OCMADSOCM { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
+ OCMADSIRAM { 0,0,0,0,64,0,128,0,0 }
+ OCMADSIROM { 1,0,0,0,0,0,0,8,0 }
+ OCMADSXRAM { 0,0,0,0,0,0,0,0,0 }
+ OCR_RVCT { 1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,8,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,64,0,128,0,0,0,0,0,0,0,0,0,0,0 }
+ RV_STAVEC ()
+ ADSCCFLG { 5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
+ ADSCMISC ()
+ ADSCDEFN (MMC)
+ ADSCUDEF ()
+ ADSCINCD ()
+ ADSASFLG { 1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
+ ADSAMISC ()
+ ADSADEFN ()
+ ADSAUDEF ()
+ ADSAINCD ()
  PropFld { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
  IncBld=1
  AlwaysBuild=0
@@ -112,43 +117,20 @@ Options 1,0,0  // Target 'Target 1'
  StopCode=3
  CustArgs ()
  LibMods ()
- KLAFLG { 44,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
- KLAMSC ()
- KLADWN ()
- KLACFI ()
- KLAASN ()
- KLARES ()
- KLACCL ()
- KLAUCL ()
- KLACSC ()
- KLAUCS ()
+ ADSLDFG { 17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
+ ADSLDTA ()
+ ADSLDDA ()
+ ADSLDSC ()
+ ADSLDIB ()
+ ADSLDIC ()
+ ADSLDMC ()
+ ADSLDIF ()
+ ADSLDDW ()
   OPTDL (SARM.DLL)(-cLPC2100)(DARMP.DLL)(-pLPC2148)(SARM.DLL)()(TARMP.DLL)(-pLPC2148)
   OPTDBG 48126,0,()()()()()()()()()() (BIN\UL2ARM.DLL)()()()
- FLASH1 { 5,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
+ FLASH1 { 1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
  FLASH2 (BIN\UL2ARM.DLL)
- FLASH3 (LPC210x_ISP.EXE ("#H" ^X $D COM1: 38400 1))
+ FLASH3 ("LPC210x_ISP.EXE" ("#H" ^X $D COM1: 38400 1))
  FLASH4 ()
-EndOpt
-
-Options 1,1,0  // Group 'Source Group 1'
- PropFld { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
- IncBld=2
- AlwaysBuild=2
- GenAsm=2
- AsmAsm=2
- PublicsOnly=2
- StopCode=11
- CustArgs ()
- LibMods ()
- KCAFLG { 42,166,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
- KCAMSC ()
- KCADEF (PICMG)
- KCAUDF ()
- KCAINC ()
- KAAFLG { 170,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
- KAAMSC ()
- KAASET ()
- KAARST ()
- KAAINC ()
 EndOpt
 

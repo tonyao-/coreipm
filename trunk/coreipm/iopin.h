@@ -23,6 +23,7 @@ See http://www.coreipm.com for documentation, latest information, licensing,
 support and contact details.
 -------------------------------------------------------------------------------
 */
+void iopin_initialize( void );
 void iopin_set( unsigned long long bit );
 void iopin_clear( unsigned long long bit );
 unsigned char iopin_get( unsigned long long bit );

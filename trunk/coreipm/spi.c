@@ -35,7 +35,7 @@ support and contact details.
 /*==============================================================*/
 /* SPI ISR for channel 1 */
 #if defined (__CA__) || defined (__CC_ARM)
-void SPI_ISR_0 ( void ) __irq;
+void SPI_ISR_0( void ) __irq;
 #elif defined (__GNUC__)
 void SPI_ISR_0(void) __attribute__ ((interrupt));
 #endif
@@ -241,7 +241,7 @@ spi_master(
 }
 
 #if defined (__CA__) || defined (__CC_ARM)
-SPI_ISR_0 ( void ) __irq
+void SPI_ISR_0( void ) __irq
 #elif defined (__GNUC__)
 void SPI_ISR_0( void )
 #endif

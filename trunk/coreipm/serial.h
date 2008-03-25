@@ -40,15 +40,19 @@ support and contact details.
 
 
 void uart_initialize( void );
+#if defined (__CA__)
 int putchar( int ch );
-int putc( int ch, int handle );
-int fputs ( const char * str, int handle );
+#elif defined (__CC_ARM)  
+int sendchar( int ch );
+#endif
+//int putc( int ch, int handle );
+//int fputs ( const char * str, int handle );
 int putchar_0( int ch );
 int putchar_1( int ch );
-int getchar( void );
+//int getchar( void );
 int getchar_0( void );
 int getchar_1( void );
 void terminal_process_work_list( void );
 void serial_tm_send( unsigned char *ws ); 
 int serial_get_handle( unsigned char port_name );
-int fflush( int handle );
+//int fflush( int handle );

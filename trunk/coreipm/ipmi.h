@@ -350,6 +350,7 @@ typedef struct ipmi_ws {
 	unsigned len_in;		/* lenght of incoming pkt */
 	unsigned len_out;		/* length of outgoing pkt */
 	unsigned len_sent;		/* length of pkt actually sent */
+	unsigned timestamp;		/* last access time to this ws element */
 	unsigned char flags;		/* protocol dependent i.e. WS_FL_xx */
 	unsigned char addr_in;		/* protocol dependent */
 	unsigned char addr_out;
