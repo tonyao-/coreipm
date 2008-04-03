@@ -65,8 +65,12 @@ void ipmi_event_init( void )
 {
 	evt_log.last_evt_rcvd= 0xff;
 
+#if defined (IPMC) || defined (MCMC)
 	// set BMC as default event receiver, local i2c address will get routed directly
-	evt_config.receiver_slave_addr = gpio_get_i2c_address( I2C_ADDRESS_LOCAL );
+	evt_config.receiver_slave_addr = module_get_i2c_address( I2C_ADDRESS_LOCAL );
+#else
+	evt_config.receiver_slave_addr = module_get_i2c_address( I2C_ADDRESS_REMOTE );
+#endif	
 	evt_config.receiver_lun = 0;
 	evt_config.evt_enabled = 1;
 }
@@ -704,7 +708,8 @@ ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len )
 	IPMI_PKT *pkt;
 	IPMI_WS *req_ws;
 	uchar seq;
-
+	
+	ipmi_event_init();
 
 	if( !( req_ws = ws_alloc() ) ) {
 		return;
@@ -722,16 +727,16 @@ ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len )
 	switch( req_ws->outgoing_protocol ) {
 		case IPMI_CH_PROTOCOL_IPMB: {
 			IPMI_IPMB_REQUEST *ipmb_req = ( IPMI_IPMB_REQUEST * )&( req_ws->pkt_out );
-
+			req_ws->addr_out = evt_config.receiver_slave_addr;
 			pkt->req = ( IPMI_CMD_REQ * )&( ipmb_req->command );
 
 			memcpy( pkt->req, msg_cmd, msg_len ); // memcpy ( destination, source, size ); 
 
-			ipmb_req->requester_slave_addr = gpio_get_i2c_address( I2C_ADDRESS_LOCAL );
+			ipmb_req->requester_slave_addr = module_get_i2c_address( I2C_ADDRESS_LOCAL );
 			ipmb_req->netfn = NETFN_EVENT_REQ;
 			ipmb_req->requester_lun = 0;
-			ipmb_req->header_checksum = ipmi_calculate_checksum( ( char * )ipmb_req, 2 );
 			ipmb_req->responder_slave_addr = evt_config.receiver_slave_addr;
+			ipmb_req->header_checksum = ipmi_calculate_checksum( ( char * )ipmb_req, 2 );
 			ipmb_req->req_seq = seq;
 			ipmb_req->responder_lun = evt_config.receiver_lun;
 			ipmb_req->command = IPMI_SE_PLATFORM_EVENT;
@@ -740,11 +745,11 @@ ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len )
 			 * The location of the data_checksum depends on the size of the data preceeding it.*/
 			ipmb_req->data_checksum = 
 				ipmi_calculate_checksum( &ipmb_req->responder_slave_addr, 
-					pkt->hdr.req_data_len + 4 ); 
+					pkt->hdr.req_data_len + 3 ); 
 			req_ws->len_out = sizeof( IPMI_IPMB_REQUEST ) 
 				- IPMB_REQ_MAX_DATA_LEN  +  pkt->hdr.req_data_len;
 			/* Assign the checksum to it's proper location */
-			*( (uchar *)ipmb_req + req_ws->len_out) = ipmb_req->data_checksum; 
+			*( (uchar *)ipmb_req + req_ws->len_out - 1) = ipmb_req->data_checksum; 
 			}			
 			break;
 		

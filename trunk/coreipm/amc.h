@@ -533,8 +533,6 @@ typedef struct set_amc_port_state_cmd_req {
 } SET_AMC_PORT_STATE_CMD_REQ;
 
 
-
-
 typedef struct set_amc_port_state_cmd_resp {
 	uchar	completion_code;	/* Completion Code. */
 	uchar	picmg_id;		/* PICMG Identifier. Indicates that 
@@ -542,6 +540,31 @@ typedef struct set_amc_port_state_cmd_resp {
 					   extension command. A value of 
 					   00h shall be used. */
 } SET_AMC_PORT_STATE_CMD_RESP;
+
+
+typedef struct amc_port_state {
+	unsigned link_grp_id:8,		/* [31:24] – Link Grouping ID */
+		link_type_ext:4,	 /*[23:20] – Link Type Extension */
+		link_type:8,		/* [19:12] – Link Type */
+		lane_3_bit_flag:1,	/* [11] – Lane 3 Bit Flag */
+		lane_2_bit_flag:1,	/* [10] – Lane 2 Bit Flag */
+		lane_1_bit_flag:1,	/* [9] – Lane 1 Bit Flag */
+		lane_0_bit_flag:1,	/* [8] – Lane 0 Bit Flag */
+		amc_channel_id:8;	/* [7:0] – AMC Channel ID */
+	uchar	state;			/* State. Indicates the desired state of the
+					   Link as described by Link Info.
+					   	00h = Disable
+					   	01h = Enable 
+					   All other values reserved. */
+					/* This field is present if AMC Channel
+					   ID is associated with an on-Carrier 
+					   device, absent otherwise. */
+	uchar	:4,			/* [7:4] Reserved; write as 0h */
+		on_carrier_dev_id:4;	/* [3:0] On-Carrier device ID. 
+					   Identifies the on-Carrier device
+					   to which the described AMC Channel
+					   is connected. */
+} AMC_PORT_STATE;
 
 
 

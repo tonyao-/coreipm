@@ -413,18 +413,18 @@ ipmi_calculate_checksum( char *ptr, int numchar )
 void
 ipmi_process_response( IPMI_PKT *pkt, unsigned char completion_code )
 {
-	IPMI_WS *req_ws, *target_ws, *resp_ws;
-	uchar seq;
+	IPMI_WS *req_ws = 0, *target_ws = 0, *resp_ws = 0;
+	uchar seq = 0;
 
 	dputstr( DBG_IPMI | DBG_INOUT, "ipmi_process_response: ingress\n" );
 
 	resp_ws = ( IPMI_WS * )pkt->hdr.ws;
-	if( resp_ws->outgoing_protocol == IPMI_CH_PROTOCOL_IPMB ) {
+	if( resp_ws->incoming_protocol == IPMI_CH_PROTOCOL_IPMB ) {
 		seq = ((IPMI_IPMB_REQUEST *)(resp_ws->pkt_in))->req_seq;
 	
 		/* using the seq#, check to see if there is an outstanding target request ws
 		 * corresponding to this response */
-		target_ws = ws_get_elem_seq( seq ); 
+		target_ws = ws_get_elem_seq( seq, resp_ws ); 
 	} else {
 		/* currently unsupported */
 		/* in instances where seq number is not used then the interface is waiting
@@ -433,6 +433,7 @@ ipmi_process_response( IPMI_PKT *pkt, unsigned char completion_code )
 	}
 	
 	if( !target_ws ) {
+		//call module response handler here
 		ws_free( resp_ws );
 		return;
 	}
