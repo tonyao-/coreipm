@@ -35,7 +35,7 @@ support and contact details.
 #define GPIO_LED_7	0x80
 #define GPIO_LED_ALL	0xff
 
-#define GPIO_ACTIVITY_LED	GPIO_LED_0
+#define GPIO_ACTIVITY_LED	GPIO_LED_1
 #define GPIO_IDENTIFY_LED	GPIO_LED_1
 
 /* do mapping from ATCA FRU LEDs to physical LEDs */

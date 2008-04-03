@@ -51,6 +51,8 @@ typedef struct led_blink {
 
 LED_BLINK led_blink;
 void gpio_led_blink_callback( unsigned char *led_mask );
+void gpio_led_on_noreset( unsigned led_mask );
+void gpio_led_off_noreset( unsigned led_mask );
 
 /* LEDs, switches, backplane address detection, etc, etc.. */
 
@@ -105,6 +107,9 @@ int gpio_get_i2c_address( int address_type )
 void gpio_led_on( unsigned led_mask )
 {
 	long long iopin = 0;
+
+	/* turn off timers if any */
+	timer_remove_callout_queue( &led_blink );
 	
 	led_state |= led_mask;
 	
@@ -122,7 +127,53 @@ void gpio_led_on( unsigned led_mask )
 	iopin_set( iopin );
 }
 
+
+/* LED control  */
+void gpio_led_on_noreset( unsigned led_mask )
+{
+	long long iopin = 0;
+
+	led_state |= led_mask;
+	
+	if( led_state & GPIO_LED_0 ) iopin |= LED_0;
+	if( led_state & GPIO_LED_1 ) iopin |= LED_1;
+/*
+	if( led_state & GPIO_LED_2 ) iopin |= LED_2;
+	if( led_state & GPIO_LED_3 ) iopin |= LED_3;
+	if( led_state & GPIO_LED_4 ) iopin |= LED_4;
+	if( led_state & GPIO_LED_5 ) iopin |= LED_5;
+	if( led_state & GPIO_LED_6 ) iopin |= LED_6;
+	if( led_state & GPIO_LED_7 ) iopin |= LED_7;
+*/
+	
+	iopin_set( iopin );
+}
+
 void gpio_led_off( unsigned led_mask )
+{
+	long long iopin = 0;
+
+	/* turn off timers if any */
+	timer_remove_callout_queue( &led_blink );
+
+	led_state &= ( ~led_mask );
+
+	if( ~led_state & GPIO_LED_0 ) iopin |= LED_0;
+	if( ~led_state & GPIO_LED_1 ) iopin |= LED_1;
+/*
+	if( ~led_state & GPIO_LED_2 ) iopin |= LED_2;
+	if( ~led_state & GPIO_LED_3 ) iopin |= LED_3;
+	if( ~led_state & GPIO_LED_4 ) iopin |= LED_4;
+	if( ~led_state & GPIO_LED_5 ) iopin |= LED_5;
+	if( ~led_state & GPIO_LED_6 ) iopin |= LED_6;
+	if( ~led_state & GPIO_LED_7 ) iopin |= LED_7;
+*/
+
+	iopin_clear( iopin );
+}
+
+
+void gpio_led_off_noreset( unsigned led_mask )
 {
 	long long iopin = 0;
 
@@ -155,10 +206,10 @@ void gpio_all_leds_off( void )
 void gpio_toggle_activity_led( void )
 {
 	if( activity_led_state ) {
-		gpio_led_on( GPIO_ACTIVITY_LED );
+		gpio_led_on_noreset( GPIO_ACTIVITY_LED );
 		activity_led_state = 0;
 	} else {
-		gpio_led_off( GPIO_ACTIVITY_LED );
+		gpio_led_off_noreset( GPIO_ACTIVITY_LED );
 		activity_led_state = 1;
 	}
 }
@@ -168,8 +219,9 @@ void gpio_led_blink ( unsigned led_mask,
 		unsigned off_period, 	/* in 100ms */
 		unsigned duration )		/* in 100ms - length of time we'll blink, 0 = forever */
 {
-	/* TODO: make sure we turn off any timers before starting a new blink sequence */
-	gpio_led_on( led_mask );
+	/* turn off any timers before starting a new blink sequence */
+	timer_remove_callout_queue( &led_blink );
+	gpio_led_on_noreset( led_mask );
 	led_blink.state = 1;
 
 	if( on_period )
@@ -199,7 +251,7 @@ gpio_led_blink_off( unsigned led_mask )
 void gpio_led_blink_callback( unsigned char *arg)
 {
 	if( led_blink.state ) {
-		gpio_led_off( led_blink.led_mask );
+		gpio_led_off_noreset( led_blink.led_mask );
 		led_blink.state = 0;
 		if( !led_blink.duration ) {
 			timer_add_callout_queue( &led_blink, led_blink.off_period, gpio_led_blink_callback, 0 ); 
@@ -208,7 +260,7 @@ void gpio_led_blink_callback( unsigned char *arg)
 			timer_add_callout_queue( &led_blink, led_blink.off_period, gpio_led_blink_callback, 0 ); 
 		}
 	} else {
-		gpio_led_on( led_blink.led_mask );
+		gpio_led_on_noreset( led_blink.led_mask );
 		led_blink.state = 1;
 		if( !led_blink.duration ) {
 			timer_add_callout_queue( &led_blink, led_blink.on_period, gpio_led_blink_callback, 0 ); 
@@ -216,7 +268,7 @@ void gpio_led_blink_callback( unsigned char *arg)
 			led_blink.duration -= led_blink.on_period;
 			timer_add_callout_queue( &led_blink, led_blink.on_period, gpio_led_blink_callback, 0 ); 
 		} else {
-			gpio_led_off( led_blink.led_mask );
+			gpio_led_off_noreset( led_blink.led_mask );
 			led_blink.state = 0;
 		}
 	}

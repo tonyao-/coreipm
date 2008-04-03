@@ -54,7 +54,7 @@ void ws_free( IPMI_WS *ws );
 IPMI_WS *ws_get_elem( unsigned state );
 void ws_set_state( IPMI_WS * ws, unsigned state );
 void ws_process_work_list( void );
-IPMI_WS *ws_get_elem_seq( uchar seq );
+IPMI_WS *ws_get_elem_seq( uchar seq, IPMI_WS* ws_ignore );
 void ws_process_incoming( IPMI_WS *ws );
 
 

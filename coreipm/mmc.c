@@ -38,10 +38,12 @@ support and contact details.
 #include "event.h"
 #include "debug.h"
 #include "arch.h" 
+#include "timer.h"
 
 
 unsigned char mmc_ipmbl_address;
 unsigned char mmc_state;
+unsigned char switch_poll_timer_handle;
 
 #define MMC_STATE_RESET		0
 #define MMC_STATE_RUNNING	1
@@ -76,6 +78,8 @@ each pin will cause an interrupt.
 #define EXTINT_FLAG_EINT2	4
 #define EXTINT_FLAG_EINT3	8
 
+AMC_PORT_STATE port_state;
+
 #if defined (__CA__) || defined (__CC_ARM)
 void EINT_ISR_0( void ) __irq;
 #elif defined (__GNUC__)
@@ -91,6 +95,8 @@ void EINT_ISR_2(void) __attribute__ ((interrupt));
 unsigned char hot_swap_handle_last_state;
 void module_init2( void );
 void mmc_hot_swap_state_change( unsigned char new_state );
+void switch_state_poll( unsigned char *arg );
+
 /*==============================================================
  * MMC ADDRESSING
  *==============================================================*/
@@ -140,31 +146,57 @@ unsigned char IPMBL_TABLE[27] = {
 	0x9A, 0xA0, 0xA4, 0x88, 0x9E, 0x86, 0x84, 0x78, 0x94, 0x7A, 0x96,
 	0x82, 0x80, 0x7C, 0x7E, 0xA2 };
 
+unsigned char mmc_local_i2c_address = 0;	// powerup value
+
 unsigned char
-module_get_i2c_address( void )
+module_get_i2c_address( int address_type )
 {
 #ifdef DEBUG_MMC
-	return( 0x72 );
+	switch( address_type ) {
+		case I2C_ADDRESS_LOCAL:
+			return 0x72;
+			break;
+		case I2C_ADDRESS_REMOTE:
+			return 0x20;
+			break;
+		default:
+			return 0;
+	}
 #else
 	unsigned char g0_0, g1_0, g2_0, g0_1, g1_1, g2_1;
 	int index;
+	
+	switch( address_type ) {
+		case I2C_ADDRESS_LOCAL:
+			if( mmc_local_i2c_address == 0 ) {
+				iopin_set( P1 );
+				g0_0 = iopin_get( GA0 );
+				g1_0 = iopin_get( GA1 );
+				g2_0 = iopin_get( GA2 );
+	
+				iopin_clear( P1 );
+				g0_0 = iopin_get( GA0 );
+				g1_0 = iopin_get( GA1 );
+				g2_0 = iopin_get( GA2 );
 
-	iopin_set( P1 );
-	g0_0 = iopin_get( GA0 );
-	g1_0 = iopin_get( GA1 );
-	g2_0 = iopin_get( GA2 );
+				if( g0_0 != g0_1 ) g0_0 = 2;
+				if( g1_0 != g1_1 ) g1_0 = 2;
+				if( g2_0 != g2_1 ) g2_0 = 2;
 
-	iopin_clear( P1 );
-	g0_0 = iopin_get( GA0 );
-	g1_0 = iopin_get( GA1 );
-	g2_0 = iopin_get( GA2 );
+				index = g2_0 * 9 + g1_0 * 3 + g0_0;
+				mmc_local_i2c_address = IPMBL_TABLE[index];
+				if( mmc_local_i2c_address >= 0x80 )
+					mmc_local_i2c_address = 0x72;
+			}
+			return( mmc_local_i2c_address );
+			break;
+		case I2C_ADDRESS_REMOTE:
+			return 0x20;
+			break;
+		default:
+			return 0;
+	}
 
-	if( g0_0 != g0_1 ) g0_0 = 2;
-	if( g1_0 != g1_1 ) g1_0 = 2;
-	if( g2_0 != g2_1 ) g2_0 = 2;
-
-	index = g2_0 * 9 + g1_0 * 3 + g0_0;
-	return( IPMBL_TABLE[index] );
 #endif
 }
 
@@ -208,6 +240,29 @@ The Carrier IPMC enables Payload Power (PWR) for the Module.
  *
  * Gets called when we power up.
  */
+#ifdef POLLED_HOT_SWAP
+void
+module_init( void )
+{
+	unsigned char handle_state = iopin_get( HOT_SWAP_HANDLE );
+
+	hot_swap_handle_last_state = handle_state;
+
+	/* Turn on blue LED. When the Module’s Management Power is enabled,
+	 * the BLUE LED should turn on as soon as possible. */
+	gpio_led_on( GPIO_FRU_LED_BLUE );
+	mmc_state = MMC_STATE_RUNNING;
+	i2c_interface_enable_local_control( 0, 0 );
+
+	// Handle current state of Hot Swap Handle 
+	mmc_hot_swap_state_change( handle_state );
+
+	// check the hot swap switch periodically
+	timer_add_callout_queue( (void *)&switch_poll_timer_handle,
+		       	5*HZ, switch_state_poll, 0 ); /* 5 sec timeout */
+
+}
+#else
 void
 module_init( void )
 {
@@ -242,7 +297,7 @@ module_init( void )
 	
 	module_init2();
 }
-
+#endif
 
 void
 module_init2( void )
@@ -257,7 +312,7 @@ module_init2( void )
 	Table 3-8, “Module Hot Swap event message.” */
 	
 	// get our IPMB-L address
-	mmc_ipmbl_address = module_get_i2c_address();
+	mmc_ipmbl_address = module_get_i2c_address( I2C_ADDRESS_LOCAL );
 
 	// module specific initialization for serial & i2c interfaces go in here
 
@@ -298,6 +353,24 @@ module_init2( void )
 	mmc_hot_swap_state_change( handle_state );
 }
 
+void
+switch_state_poll( unsigned char *arg )
+{
+	unsigned char handle_state = iopin_get( HOT_SWAP_HANDLE );
+
+	if( handle_state != hot_swap_handle_last_state ) {
+		( handle_state == HANDLE_SWITCH_OPEN )?
+			mmc_hot_swap_state_change( MODULE_HANDLE_OPENED ):
+			mmc_hot_swap_state_change( MODULE_HANDLE_CLOSED );
+	}
+	
+	hot_swap_handle_last_state = handle_state;
+
+	// Re-start the timer
+	timer_add_callout_queue( (void *)&switch_poll_timer_handle,
+		       	5*HZ, switch_state_poll, 0 ); /* 5 sec timeout */
+
+}
 
 /*==============================================================
  * STATE CHANGE HANDLING
@@ -565,6 +638,17 @@ mmc_set_port_state( IPMI_PKT *pkt )
 	resp->completion_code = CC_NORMAL;
 	resp->picmg_id = PICMG_ID;
 	pkt->hdr.resp_data_len = sizeof( SET_AMC_PORT_STATE_CMD_RESP ) - 1;
+
+	port_state.link_grp_id = req->link_grp_id;
+	port_state.link_type_ext = req->link_type_ext;
+	port_state.link_type = req->link_type;
+	port_state.lane_3_bit_flag = req->lane_3_bit_flag;
+	port_state.lane_2_bit_flag = req->lane_2_bit_flag;
+	port_state.lane_1_bit_flag = req->lane_1_bit_flag;
+	port_state.lane_0_bit_flag = req->lane_0_bit_flag;
+	port_state.amc_channel_id = req->amc_channel_id;
+	port_state.state = req->state;
+	port_state.on_carrier_dev_id = req->on_carrier_dev_id;
 }
 
 void
@@ -577,7 +661,9 @@ mmc_get_port_state( IPMI_PKT *pkt )
 
 	resp->completion_code = CC_NORMAL;
 	resp->picmg_id = PICMG_ID;
-	pkt->hdr.resp_data_len = sizeof( GET_PORT_STATE_CMD_RESP ) - 1;
+	
+	// return port state info if available - we don't have anything to report right now
+	pkt->hdr.resp_data_len = 1;	
 }
 
 void
@@ -609,7 +695,18 @@ mmc_get_clock_state( IPMI_PKT *pkt )
 void
 mmc_get_fru_control_capabilities( IPMI_PKT *pkt ) 
 {
+	FRU_CONTROL_CAPABILITIES_CMD_REQ *req = ( FRU_CONTROL_CAPABILITIES_CMD_REQ * )pkt->req;
+	FRU_CONTROL_CAPABILITIES_CMD_RESP *resp = ( FRU_CONTROL_CAPABILITIES_CMD_RESP * )pkt->resp;
 
+	dprintf( DBG_IPMI | DBG_INOUT, "mmc_get_fru_control_capabilities: ingress\n" );
+
+	resp->completion_code = CC_NORMAL;
+	resp->picmg_id = PICMG_ID;
+	resp->diag_int = 1;		/* Capable of issuing a diagnostic interrupt */
+	resp->graceful_reboot = 1;	/* Capable of issuing a graceful reboot */
+	resp->warm_reset = 1;		/* Capable of issuing a warm reset */
+
+	pkt->hdr.resp_data_len = sizeof( FRU_CONTROL_CAPABILITIES_CMD_RESP ) - 1;
 }
 
 

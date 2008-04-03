@@ -186,10 +186,8 @@ void i2c_initialize( void )
 		remote_i2c_address = 0x20;
 	}
 	*/
-	local_i2c_address = module_get_i2c_address();
-#ifdef MMC
-	remote_i2c_address = 0x20;
-#endif
+	local_i2c_address = module_get_i2c_address( I2C_ADDRESS_LOCAL );
+	remote_i2c_address =  module_get_i2c_address( I2C_ADDRESS_REMOTE );
 	
 	for( channel = 0 ; channel < I2C_NUM_CHANNELS; channel++ ) {
 		i2c_context[channel].state = I2STAT_NADDR_SLAVE_MODE;
@@ -214,8 +212,11 @@ void i2c_initialize( void )
 
 	/* Set our slave address. The LSB of I2ADR is the general call bit.
 	 * We set this bit so that the general call address (0x00) is recognized. */
+#ifdef IPMC
 	I2C0ADR = ( local_i2c_address << 1 ) | 1;
-
+#else
+	I2C0ADR = ( local_i2c_address << 1 ) | 0;
+#endif
 	/* Initialize VIC for I2C use */
 	/* Interrupt Select register (VICIntSelect) is a read/write accessible 
 	 * register. This register classifies each of the 32 interrupt requests
@@ -1135,6 +1136,7 @@ i2c_slave_complete( IPMI_WS *ws, int status )
 {
 	switch( status ) {
 		case I2ERR_NOERR:
+			ws->addr_out = remote_i2c_address;
 			ws_set_state( ws, WS_ACTIVE_IN );
 			break;
 		default:

@@ -114,7 +114,7 @@ ws_get_elem( unsigned state )
 }
 
 IPMI_WS *
-ws_get_elem_seq( uchar seq )
+ws_get_elem_seq( uchar seq, IPMI_WS *ws_ignore )
 {
 	IPMI_WS *ws = 0;
 	IPMI_WS *ptr = ws_array;
@@ -123,7 +123,9 @@ ws_get_elem_seq( uchar seq )
 	for ( i = 0; i < WS_ARRAY_SIZE; i++ )
 	{
 		ptr = &ws_array[i];
-		if( ptr->seq_out == seq ) {
+		if( ptr == ws_ignore )
+			continue;
+		if( ( ptr->ws_state != WS_FREE ) && ( ptr->seq_out == seq ) ) {
 			ws = ptr;
 			break;
 		}
@@ -196,7 +198,7 @@ void ws_process_work_list( void )
 void
 ws_process_incoming( IPMI_WS *ws )
 {
-	ws_free( ws );
+	ipmi_process_pkt( ws );
 	return;
 }
 

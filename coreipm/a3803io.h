@@ -36,13 +36,12 @@ support and contact details.
 
 // INTERRUPT GENERATING INPUTS
 // ---------------------------
-#define EINT_HOT_SWAP_HANDLE	P0_16  // EINT0
 #define EINT_RESET		P0_7   // EINT2 - shared with PWM out
 #define EINT_SPI		P0_20  // EINT3
-
+#define EINT_I2C		P0_30	// EITN3 on a different pin 
 // NON-INTERRUPT, SWITCH INPUTS
 // ----------------------------
-#define HOT_SWAP_HANDLE		P0_16	// same function non-interrupt sensitive
+#define HOT_SWAP_HANDLE		P1_22
 
 // SPI
 // ---
@@ -61,13 +60,14 @@ support and contact details.
 #define ADC_CH_6	P0_21	//  1
 #define ADC_CH_7	P0_22	//  2
 
+/*
 // Alternate uses for ADC_CH_4 - 7 pins
 #define SPI_SELECT_0	P0_10
 #define SPI_SELECT_1	P0_15
 #define SPI_SELECT_2	P0_21
 #define SPI_SELECT_3	P0_22
 
-/* Backplane addressing GPIO IN */
+// Backplane addressing GPIO IN
 #define	BP_0		P1_16	// 16
 #define	BP_1		P1_17	// 12
 #define	BP_2		P1_18	//  8
@@ -76,8 +76,9 @@ support and contact details.
 #define	BP_5		P1_21	// 44
 #define	BP_6		P1_22	// 40
 #define	BP_7		P1_23	// 36
+*/
 
-/* AMC GA0, GA1, GA2 lines GPIO IN - shared with backplane addressing functions */
+/* AMC GA0, GA1, GA2 lines GPIO IN  */
 #define GA0		P1_16	// 16
 #define GA1		P1_17	// 12
 #define GA2		P1_18	//  8
@@ -101,15 +102,21 @@ support and contact details.
 #define	GPIO_1		P0_23	// 58
 #define GPIO_2		P0_12	// 38
 #define GPIO_3		P0_13	// 39
-#define LED_1		P0_17	// 47
+#define LED_1		P1_23	// 36
 #define LED_0		P0_31	// 17 - BLUE LED
+#define BLUE_LED	P0_31	// 17 - BLUE LED
 
 /* AMC P1 & PAYLOAD_POWER lines - GPIO OUT - shared with General IO */
-#define P1		P0_18	// 53
-#define PAYLOAD_POWER	P0_23
+#define P1		( P1_19 | P1_20 | P1_21 )	
+#define PAYLOAD_POWER	P0_26	// Active-High Enable. A logic low shuts down payload power.
+#define PAYLOAD_RESET	P0_23	// A logic low resets the payload
 
+/*
 // TACH-PWM / GPIO
 #define TACH_IN_0	P0_19	// 54
 #define PWM_OUT_0	P0_7	// 31
+*/
 
+// POWER MONITORING - GPIO IN
+#define POWER_FAIL	P0.25	//  9
 
