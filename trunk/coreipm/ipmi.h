@@ -911,6 +911,12 @@ Broadcast “Get Device ID” 	App 	01h 	O/M 	M 	M
 #define DEV_STATUS_READY		0
 #define DEV_STATUS_NOT_READY		1
 
+
+typedef struct generic_cmd_req {
+	uchar	command;
+} GENERIC_CMD_REQ;
+
+
 /* Get Device ID Command - response data */
 typedef struct get_device_id_cmd_resp {
 	uchar	completion_code;	/* Completion Code */
