@@ -440,7 +440,7 @@ picmg_m1_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 
 	/* if the Insertion Criteria Met condition exists then we can go to M2 state */
 	if( ( gpio_get_handle_switch_state() == HANDLE_SWITCH_CLOSED ) && ( !fru[fru_id].locked ) ) {
@@ -484,7 +484,7 @@ picmg_m2_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 	
 	/* dispatch message */
-	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 }
 
 
@@ -684,7 +684,7 @@ picmg_m3_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 
 }
 
@@ -722,7 +722,7 @@ picmg_m4_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 
 }
 
@@ -760,7 +760,7 @@ picmg_m5_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 
 }
 
@@ -801,7 +801,7 @@ picmg_m6_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( &msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned  char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
 
 	picmg_m1_state( fru_id );
 }
@@ -1309,7 +1309,7 @@ picmg_set_port_state( IPMI_PKT *pkt )
 	resp->picmg_id = PICMG_ID;
 
 	// search for an entry that matches interface & channel_number
-	for( i = 0; i < link_info_table; i++ ) {
+	for( i = 0; i < NUM_LINK_INFO_ENTRIES; i++ ) {
 		if( link_info_table[i].entry_in_use 
 		  && ( link_info_table[i].link_info.interface == req->link_info.interface ) 
 		  && ( link_info_table[i].link_info.channel_number == req->link_info.channel_number ) ) {
@@ -1319,7 +1319,7 @@ picmg_set_port_state( IPMI_PKT *pkt )
 	
 	if( !found ) {
 		// use a free entry
-		for( i = 0; i < link_info_table; i++ ) {
+		for( i = 0; i < NUM_LINK_INFO_ENTRIES; i++ ) {
 			if( !link_info_table[i].entry_in_use ) {
 			       found++;
 			       link_info_table[i].entry_in_use = 1;
@@ -1357,7 +1357,7 @@ picmg_get_port_state( IPMI_PKT *pkt )
 	resp->picmg_id = PICMG_ID;
 	
 	// search for an entry that matches interface & channel_number
-	for( i = 0; i < link_info_table; i++ ) {
+	for( i = 0; i < NUM_LINK_INFO_ENTRIES; i++ ) {
 		if( link_info_table[i].entry_in_use 
 		  && ( link_info_table[i].link_info.interface == req->interface ) 
 		  && ( link_info_table[i].link_info.channel_number == req->channel_number ) ) {
