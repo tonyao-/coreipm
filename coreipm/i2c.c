@@ -212,10 +212,14 @@ void i2c_initialize( void )
 
 	/* Set our slave address. The LSB of I2ADR is the general call bit.
 	 * We set this bit so that the general call address (0x00) is recognized. */
+	/* IPMI and dependent specifications such as ATCA define the address as
+	 * the whole byte with bit 0 always 0, whereas the i2c spec defines the address
+	 * as the top 7 bits. We're using the IPMI address definition for the address
+	 * values which means we don't have to shift the address value left by 1 bit. */
 #ifdef IPMC
-	I2C0ADR = ( local_i2c_address << 1 ) | 1;
+	I2C0ADR = local_i2c_address | 1;
 #else
-	I2C0ADR = ( local_i2c_address << 1 ) | 0;
+	I2C0ADR = local_i2c_address | 0;
 #endif
 	/* Initialize VIC for I2C use */
 	/* Interrupt Select register (VICIntSelect) is a read/write accessible 
@@ -253,9 +257,9 @@ void i2c_initialize( void )
 	 * - use this port independently, in this case set the address to anything desired
 	 */
 #ifdef I2C_LOOPBACK
-	I2C1ADR = ( remote_i2c_address << 1 ) | 1;
+	I2C1ADR = remote_i2c_address | 1;
 #else
-	I2C1ADR = ( local_i2c_address << 1 ) | 1;
+	I2C1ADR = local_i2c_address | 1;
 #endif
 	 	
 	/* When this register is written, ones enable interrupt requests or software
@@ -400,11 +404,11 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 				 * then be reset before the serial transfer can continue.
 				 */
 				if( context->op_type == OP_MODE_MASTER_XMIT ) {
-					I2CDAT_WRITE( context->ws->addr_out << 1 | 
+					I2CDAT_WRITE( context->ws->addr_out | 
 							DATA_DIRECTION_WRITE, channel );
 				}
 				else {
-					I2CDAT_WRITE( context->ws->addr_out << 1 | 
+					I2CDAT_WRITE( context->ws->addr_out | 
 							DATA_DIRECTION_READ, channel );
 				}
 				I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_STA, channel ); 

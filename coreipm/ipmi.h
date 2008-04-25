@@ -383,7 +383,7 @@ typedef struct ipmi_ws {
  * 2) remove LAN req/resp definitions, they are duplicate */
 
 typedef struct ipmi_ipmb_hdr {
-	uchar	slave_addr;		/* Requester/Responder Slave Address. */
+//	uchar	slave_addr;		/* Requester/Responder Slave Address. */
 #ifdef BF_MS_FIRST
 	uchar	netfn:6,		/* NetFn. For a response command, 
 					   the NetFn is always odd and one greater 
@@ -400,7 +400,8 @@ typedef struct ipmi_ipmb_hdr {
 #define IPMB_REQ_MAX_DATA_LEN 25
 
 typedef struct ipmi_ipmb_request {
-	uchar	responder_slave_addr; 	/* This is the IPMB address of the device that
+//	uchar	responder_slave_addr;
+				 	/* This is the IPMB address of the device that
 					   is expected to respond to the message. */
 #ifdef BF_MS_FIRST  /* bit fields assigned left to right (MS bits first) */
 	uchar	netfn:6, 		/* This contains the network function of 
@@ -453,7 +454,8 @@ typedef struct ipmi_ipmb_request {
 
 /* General IPMI response format */
 typedef struct ipmi_ipmb_response {
-	uchar	requester_slave_addr;	/* Requester Slave Address. This is the 
+//	uchar	requester_slave_addr;	
+					/* Requester Slave Address. This is the 
 					   IPMB address of the requesting device 
 					   and describes which device receives the 
 					   response. */
@@ -2807,10 +2809,10 @@ reports whether a given Entity is present or not.
 
 */
 
-typedef struct get_sensor_reading_cmd {
+typedef struct get_sensor_reading_cmd_req {
 	uchar	command;
 	uchar	sensor_number;
-} GET_SENSOR_READING_CMD;
+} GET_SENSOR_READING_CMD_REQ;
 
 typedef struct get_sensor_reading_resp {
 	uchar	completion_code;
@@ -3062,6 +3064,13 @@ in the type/length field (e.g. Hex, ASCII, Binary).
 Prior to using any FRU Information Data, an applications should validate the
 checksum for the area or record.
 */
+
+typedef struct fru_cache {
+	uchar	fru_dev_id;
+	int	fru_inventory_area_size;
+	uchar	*fru_data;
+} FRU_CACHE;
+
 
 typedef struct fru_common_header {
 #ifdef BF_MS_FIRST

@@ -708,7 +708,8 @@ ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len )
 	IPMI_PKT *pkt;
 	IPMI_WS *req_ws;
 	uchar seq;
-	
+	uchar responder_slave_addr;
+
 	ipmi_event_init();
 
 	if( !( req_ws = ws_alloc() ) ) {
@@ -735,8 +736,9 @@ ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len )
 			ipmb_req->requester_slave_addr = module_get_i2c_address( I2C_ADDRESS_LOCAL );
 			ipmb_req->netfn = NETFN_EVENT_REQ;
 			ipmb_req->requester_lun = 0;
-			ipmb_req->responder_slave_addr = evt_config.receiver_slave_addr;
-			ipmb_req->header_checksum = ipmi_calculate_checksum( ( char * )ipmb_req, 2 );
+//			ipmb_req->responder_slave_addr = evt_config.receiver_slave_addr;
+			responder_slave_addr = evt_config.receiver_slave_addr;
+			ipmb_req->header_checksum = -( *( char * )ipmb_req + responder_slave_addr );
 			ipmb_req->req_seq = seq;
 			ipmb_req->responder_lun = evt_config.receiver_lun;
 			ipmb_req->command = IPMI_SE_PLATFORM_EVENT;
@@ -744,7 +746,7 @@ ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len )
 			 * It's used as a placeholder to indicate that a checksum follows the data field.
 			 * The location of the data_checksum depends on the size of the data preceeding it.*/
 			ipmb_req->data_checksum = 
-				ipmi_calculate_checksum( &ipmb_req->responder_slave_addr, 
+				ipmi_calculate_checksum( &ipmb_req->requester_slave_addr, 
 					pkt->hdr.req_data_len + 3 ); 
 			req_ws->len_out = sizeof( IPMI_IPMB_REQUEST ) 
 				- IPMB_REQ_MAX_DATA_LEN  +  pkt->hdr.req_data_len;

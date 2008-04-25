@@ -219,7 +219,7 @@ readings.
 void
 ipmi_get_sensor_reading( IPMI_PKT *pkt )
 {
-	GET_SENSOR_READING_CMD *req = ( GET_SENSOR_READING_CMD * )(pkt->req);
+	GET_SENSOR_READING_CMD_REQ *req = ( GET_SENSOR_READING_CMD_REQ * )(pkt->req);
 	GET_SENSOR_READING_RESP *resp = ( GET_SENSOR_READING_RESP * )(pkt->resp);
 	int i, found = 0;
 	
