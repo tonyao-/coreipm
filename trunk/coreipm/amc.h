@@ -64,43 +64,43 @@ typedef struct carrier_information_table {
 } CARRIER_INFORMATION_TABLE;
 
 
-
-
-/* AMC Table 3-10 Module Current Requirements record */
+/* Table 3-10 Module Current Requirements record */
 typedef struct module_current_requirements_record {
-	uchar	record_type_id;	/* Record Type ID. For all records defined
-				   in this specification a value of C0h (OEM)
-				   shall be used. */
+	uchar	rec_type_id;	/* Record Type ID. For all records 
+				   defined in this specification,
+				   a value of C0h (OEM) must be used. */
 #ifdef BF_MS_FIRST
-	uchar 	eol:1,		/* [7:7] End of list. Set to one for the last record */
-	      	reserved:3,	/* [6:4] Reserved, write as 0h.*/
-		version:4;	/* [3:0] record format version (2h for this definition) */
+	uchar	end_list:1,	/* [7] – End of List. Set to one for 
+				   the last record */
+		:3,		/* [6:4] – Reserved, write as 0h */
+		rec_format:4;	/* [3:0] – Record format version 
+				   (= 2h for this definition) */
 #else
-	uchar	version:4,
-		reserved:3,
-		eol:1;
+	uchar	rec_format:4,
+			:3,
+			end_list:1;
 #endif
-	uchar	record_len;	/* Record Length. */
-	uchar	record_cksum;	/* Record Checksum. Holds the zero checksum of
-				   the record. */
-	uchar	header_cksum;	/* Header Checksum. Holds the zero checksum of 
-				   the header. */
-	uchar	manuf_id[3];	/* Manufacturer ID. LS Byte first. Write as the
-				   three byte ID assigned to PICMG®. For this
-				   specification, the value 12634 (00315Ah) shall
-				   be used. */
-	uchar	picmg_rec_id;	/* PICMG Record ID. For the Shelf Power 
-				   Distribution Record, the value 11h shall be
-				   used. */
-	uchar	rec_fmt_ver;	/* Record Format Version. For this specification,
-				   the value 0h shall be used. */
-	uchar	current_draw;	/* Current Draw. This field holds the Payload Power
-				   (PWR) requirement of the Module given as current
-				   requirement in units of 0.1A at 12V. (This equals
-				   the value of the power in W divided by 1.2.) */
+	uchar	rec_length;	/* Record Length */
+	uchar	rec_cksum;	/* Record Checksum. Holds the zero 
+				   checksum of the record. */
+	uchar	hdr_cksum;	/* Header Checksum. Holds the zero 
+				   checksum of the header. */
+	uchar	manuf_id_lsb;	/* Manufacturer ID. Least significant 
+				   byte first. Write as the three byte ID
+				   assigned to PICMG. For this specification
+				   the value 12634 (00315Ah) must be used. */
+	uchar	manuf_id_midb;
+	uchar	manuf_id_msb;
+	uchar	picmg_rec_id;	/* PICMG Record ID. For the Module Power Descriptor
+				   table, the value 16h must be used. */
+	uchar	rec_fmt_ver;	/* Record Format Version. For this specification, 
+				   the value 0h must be used. */
+	uchar	curr_draw;	/* Current Draw. This field holds the Payload 
+				   Power (PWR) requirement of the Module given
+				   as current requirement in units of 0.1A at 12V. 
+				   (This equals the value of the power in W 
+				   divided by 1.2.) */
 } MODULE_CURRENT_REQUIREMENTS_RECORD;
-
-
 
 
 /* AMC Table 3-12 Module Activation and Current Descriptor */
@@ -486,7 +486,7 @@ PICMG AMC Module		C1h
 
 /* Table 3-27 Set AMC Port State command */
 typedef struct set_amc_port_state_cmd_req {
-	uchar	cmd;
+	uchar	command;
 	uchar	picmg_id;		/* PICMG Identifier. Indicates that 
 					   this is a PICMG®-defined group
 					   extension command. A value of
@@ -571,7 +571,7 @@ typedef struct amc_port_state {
 
 /* Table 3-28 Get AMC Port State command */
 typedef struct get_amc_port_state_cmd_req {
-	uchar	cmd;
+	uchar	command;
 	uchar	picmg_id;		/* PICMG Identifier. Indicates that 
 					   this is a PICMG®-defined group
 					   extension command. A value of
@@ -675,7 +675,7 @@ typedef struct get_amc_port_state_cmd_resp {
 
 /* Table 3-44 Set Clock State command */
 typedef struct set_clock_state_cmd_req {
-	uchar	cmd;
+	uchar	command;
 	uchar	picmg_id;		/* PICMG Identifier. Indicates that 
 					   this is a PICMG®-defined group
 					   extension command. A value of
@@ -754,7 +754,7 @@ the PLL Control field in the “Set Clock State” command shall be set to
 /* Table 3-45 Get Clock State command */
 
 typedef struct get_clock_state_cmd_req {
-	uchar	cmd;
+	uchar	command;
 	uchar	picmg_id;		/* PICMG Identifier. Indicates that 
 					   this is a PICMG®-defined group
 					   extension command. A value of
@@ -825,7 +825,7 @@ typedef struct get_clock_state_cmd_resp {
 /* Table 3-26 (PICMG 3.0 Revision 3.0) FRU Control Capabilities command */
 
 typedef struct fru_control_capabilities_cmd_req {
-	uchar	cmd;
+	uchar	command;
 	uchar	picmg_id;		/* PICMG Identifier. Indicates that 
 					   this is a PICMG®-defined group
 					   extension command. A value of
