@@ -23,6 +23,7 @@ See http://www.coreipm.com for documentation, latest information, licensing,
 support and contact details.
 -------------------------------------------------------------------------------
 */
+
 #define MAX_FRU_DEV_ID  0
 void mmc_set_port_state( IPMI_PKT *pkt );
 void mmc_get_port_state( IPMI_PKT *pkt );

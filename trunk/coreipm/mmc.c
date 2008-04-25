@@ -93,9 +93,23 @@ void EINT_ISR_2(void) __attribute__ ((interrupt));
 #endif
 
 unsigned char hot_swap_handle_last_state;
+
+// FRU info data
+extern FRU_CACHE fru_inventory_cache[];
+struct fru_data {
+	FRU_COMMON_HEADER hdr;
+	FRU_INTERNAL_USE_AREA internal;
+	FRU_CHASSIS_INFO_AREA_HDR chassis;
+	BOARD_AREA_FORMAT_HDR board;
+	PRODUCT_AREA_FORMAT_HDR product;
+	MODULE_CURRENT_REQUIREMENTS_RECORD mcr;
+} fru_data;
+
+
 void module_init2( void );
 void mmc_hot_swap_state_change( unsigned char new_state );
 void switch_state_poll( unsigned char *arg );
+void fru_data_init( void );
 
 /*==============================================================
  * MMC ADDRESSING
@@ -140,8 +154,9 @@ UUG	220	24	0x7C
 UUP	221	25	0x7E
 UUU	222	26	0xA2
 */
+#define IPMBL_TABLE_SIZE 	27
 
-unsigned char IPMBL_TABLE[27] = { 
+unsigned char IPMBL_TABLE[IPMBL_TABLE_SIZE] = { 
 	0x70, 0x8A, 0x72, 0x8E, 0x92, 0x90, 0x74, 0x8C, 0x76, 0x98, 0x9C,
 	0x9A, 0xA0, 0xA4, 0x88, 0x9E, 0x86, 0x84, 0x78, 0x94, 0x7A, 0x96,
 	0x82, 0x80, 0x7C, 0x7E, 0xA2 };
@@ -170,9 +185,9 @@ module_get_i2c_address( int address_type )
 		case I2C_ADDRESS_LOCAL:
 			if( mmc_local_i2c_address == 0 ) {
 				iopin_set( P1 );
-				g0_0 = iopin_get( GA0 );
-				g1_0 = iopin_get( GA1 );
-				g2_0 = iopin_get( GA2 );
+				g0_1 = iopin_get( GA0 );
+				g1_1 = iopin_get( GA1 );
+				g2_1 = iopin_get( GA2 );
 	
 				iopin_clear( P1 );
 				g0_0 = iopin_get( GA0 );
@@ -184,9 +199,10 @@ module_get_i2c_address( int address_type )
 				if( g2_0 != g2_1 ) g2_0 = 2;
 
 				index = g2_0 * 9 + g1_0 * 3 + g0_0;
+				if( index >= IPMBL_TABLE_SIZE )
+					return 0;
+				
 				mmc_local_i2c_address = IPMBL_TABLE[index];
-				if( mmc_local_i2c_address >= 0x80 )
-					mmc_local_i2c_address = 0x72;
 			}
 			return( mmc_local_i2c_address );
 			break;
@@ -218,6 +234,16 @@ Module is waiting to be activated.
 The Carrier IPMC reads the Module’s Module Current Requirements record and 
 AdvancedMC Point-to-Point Connectivity record.
 
+REQ 3.75 The Module FRU Information shall contain the Module Current Requirements
+record as shown in Table 3-10 Module Current Requirements record.
+This is returned in the MultiRecord Area (see Ch16 in "- IPMI -
+Platform Management FRU Information Storage Definition" document
+
+The FRU Inventory data also may contain other information such as the serial
+number, part number, asset tag, and short descriptive string for the FRU.
+The contents of a FRU Inventory Record are also specified in the Platform Management
+FRU Information Storage Definition.
+
 If the Module FRU Information is invalid or if the Carrier cannot provide the
 necessary Payload Power then:
 
@@ -248,15 +274,20 @@ module_init( void )
 
 	hot_swap_handle_last_state = handle_state;
 
+	// ====================================================================
 	/* Turn on blue LED. When the Module’s Management Power is enabled,
 	 * the BLUE LED should turn on as soon as possible. */
 	gpio_led_on( GPIO_FRU_LED_BLUE );
+
 	mmc_state = MMC_STATE_RUNNING;
 	i2c_interface_enable_local_control( 0, 0 );
+	fru_data_init();
 
+	// ====================================================================
 	// Handle current state of Hot Swap Handle 
 	mmc_hot_swap_state_change( handle_state );
 
+	// ====================================================================
 	// check the hot swap switch periodically
 	timer_add_callout_queue( (void *)&switch_poll_timer_handle,
 		       	5*HZ, switch_state_poll, 0 ); /* 5 sec timeout */
@@ -267,6 +298,8 @@ void
 module_init( void )
 {
 	unsigned char reset_state = iopin_get( EINT_RESET );
+
+	fru_data_init();
 	
 	// level-sensitivity is selected for EINT2.
 	EXTMODE &= 0xfb;	/* 0: Level-sensitive
@@ -372,6 +405,47 @@ switch_state_poll( unsigned char *arg )
 
 }
 
+
+void
+fru_data_init( void )
+{
+	// ====================================================================
+	// initialize the FRU data records 
+	// - everything is cached for an AMC module
+	// Note: all these are module specific
+	// ====================================================================
+	fru_inventory_cache[0].fru_dev_id = 0;
+	fru_inventory_cache[0].fru_inventory_area_size = sizeof(MODULE_CURRENT_REQUIREMENTS_RECORD);
+	fru_inventory_cache[0].fru_data = ( unsigned char * )(&fru_data);
+
+	// FRU data header
+	fru_data.hdr.format_version = 0x1;
+	fru_data.hdr.int_use_offset = 0;	// not used currently
+	fru_data.hdr.chassis_info_offset = 0;
+	fru_data.hdr.board_offset = 0;
+	fru_data.hdr.product_info_offset = 0;
+	fru_data.hdr.multirecord_offset = ( char * )&( fru_data.mcr ) - ( char * )&( fru_data );
+	fru_data.hdr.checksum = ipmi_calculate_checksum( ( char * )&( fru_data.hdr ), sizeof( FRU_COMMON_HEADER ) - 1 );
+		
+	// Current requirements
+	fru_data.mcr.rec_type_id = 0xc0;
+	fru_data.mcr.end_list = 1;	/* End of List. Set to one for the last record */
+	fru_data.mcr.rec_format = 0x2;	/* Record format version (= 2h for this definition) */
+	fru_data.mcr.rec_length;	/* Record Length */
+	fru_data.mcr.rec_cksum;	/* Record Checksum. */
+	fru_data.mcr.hdr_cksum;	/* Header Checksum. */
+	/* Manufacturer ID. For the AMC specification the value 12634 (00315Ah) must be used. */
+	fru_data.mcr.manuf_id_lsb = 0x5a;
+	fru_data.mcr.manuf_id_midb = 0x31;
+	fru_data.mcr.manuf_id_msb = 0x00;
+	fru_data.mcr.picmg_rec_id = 0x16; /* PICMG Record ID. For the Module Power 
+					     Descriptortable, the value 16h must be used. */
+	fru_data.mcr.rec_fmt_ver = 0;	/* Record Format Version. As per AMC specification,
+					   the value 0h must be used. */
+	fru_data.mcr.curr_draw = 5;	/* Current Draw = 0.5A. In units of 0.1A at 12V */ 
+}
+
+
 /*==============================================================
  * STATE CHANGE HANDLING
  *==============================================================*/
@@ -384,7 +458,7 @@ REQ 3.56 When the Module Handle state transitions to open, the MMC shall
 send a Module Hot Swap (Module Handle Opened) event message as described
 in Table 3-8, “Module Hot Swap event message.”
 
-REQ 3.57MMCs shall periodically re-send Module Hot Swap event messages 
+REQ 3.57 MMCs shall periodically re-send Module Hot Swap event messages 
 until either a Command Completed Normally (00h) Completion Code has been 
 returned from the Carrier IPMC or the Module wants to send a new Module 
 Hot Swap event message.
@@ -394,7 +468,7 @@ Hot Swap event message.
 /* Arguments;
  * 	new_state =   [ MODULE_HANDLE_CLOSED | 
  * 			MODULE_HANDLE_OPENED |
- * 			MODULE_QUIESCE |
+ * 			MODULE_QUIESCED |
  * 			MODULE_BACKEND_POWER_FAILURE |
  * 			MODULE_BACKEND_POWER_SHUTDOWN ]
  */
@@ -754,8 +828,8 @@ shall return the “Invalid data field in Request (CCh)” Completion Code.
 
 REQ 3.105b On receipt of the “FRU Control (Quiesce)” command, the MMC shall
 take appropriate action (implementation specific) to bring the Payload to
-a quiesced state and shall send a Module Hot Swap (Quiesced) event messag
-e to the Carrier IPMC.
+a quiesced state and shall send a Module Hot Swap (Quiesced) event message
+to the Carrier IPMC.
 */
 /* 
  * The following are called by picmg_fru_control()
@@ -793,6 +867,7 @@ module_issue_diag_int( unsigned char dev_id )
 void
 module_quiesce( unsigned char dev_id )
 {
+	mmc_hot_swap_state_change( MODULE_QUIESCED );
 }
 
 

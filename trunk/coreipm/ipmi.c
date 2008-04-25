@@ -39,6 +39,7 @@ support and contact details.
 #include "picmg.h"
 #include "event.h"
 #include "sensor.h"
+#include "module.h"
 #include <string.h>
 
 #define FRU_INVENTORY_CACHE_ARRAY_SIZE	4
@@ -74,11 +75,6 @@ typedef struct watchdog_info {
 	uchar timer_use_exp_fl_clr;
 } WATCHDOG_INFO;
 
-typedef struct fru_cache {
-	uchar	fru_dev_id;
-	int	fru_inventory_area_size;
-	uchar	*fru_data;
-} FRU_CACHE;
 	
 struct {
 	uchar fru_dev_id;
@@ -86,9 +82,6 @@ struct {
 } fru_locator_table[FRU_LOCATOR_TABLE_SIZE] = { 0, 0 };
 
 WATCHDOG_INFO wd_timer;
-
-
-
 FRU_CACHE fru_inventory_cache[FRU_INVENTORY_CACHE_ARRAY_SIZE];
 CHANNEL channel_table[16] = { {0, 0} };
 unsigned device_status = DEV_STATUS_READY;
@@ -191,6 +184,8 @@ ipmi_process_pkt( IPMI_WS * ws )
 {
 	IPMI_PKT	*pkt;
 	uchar		cksum, completion_code = CC_NORMAL;
+	uchar		responder_slave_addr, requester_slave_addr;
+	
 	IPMI_IPMB_HDR *ipmb_hdr = ( IPMI_IPMB_HDR * )&( ws->pkt_in );
 
 	dputstr( DBG_IPMI | DBG_INOUT, "ipmi_process_pkt: ingress\n" );
@@ -216,7 +211,7 @@ ipmi_process_pkt( IPMI_WS * ws )
 				 * doesn’t match its rsSA. */
 
 				/* ignore if not our address */
-				if( gpio_get_i2c_address( I2C_ADDRESS_LOCAL ) != ws->pkt_in[0] ) {
+				if( module_get_i2c_address( I2C_ADDRESS_LOCAL ) != ws->pkt_in[0] ) {
 					dputstr( DBG_IPMI | DBG_LVL1, "ipmi_process_pkt: General Call: not our address\n" );
 					ws_free( ws );
 					return;
@@ -230,15 +225,16 @@ ipmi_process_pkt( IPMI_WS * ws )
 
 			if( !( ipmb_hdr->netfn % 2 ) ) {
 				/* an even netfn indicates a request */
-				cksum = ipmi_calculate_checksum( (ws->pkt_in), 2 );
-				if( ws->pkt_in[2] != cksum ) { /* header checksum is the third byte */
+				responder_slave_addr = module_get_i2c_address( I2C_ADDRESS_LOCAL );
+				cksum = -( *( ws->pkt_in ) + responder_slave_addr );;
+				if( ws->pkt_in[1] != cksum ) { /* header checksum is the second byte */
 					dputstr( DBG_IPMI | DBG_ERR, "ipmi_process_pkt: Faulty header checksum\n" );
 					completion_code = CC_INVALID_DATA_IN_REQ;
 					break;
 				}
 
 				cksum = ipmi_calculate_checksum( &(((IPMI_IPMB_REQUEST *)(ws->pkt_in))->requester_slave_addr), 
-						ws->len_in - 4 );
+						ws->len_in - 3 );
 				if( ws->pkt_in[ws->len_in - 1] != cksum ) { /* data checksum is the last byte */
 					dputstr( DBG_IPMI | DBG_ERR, "ipmi_process_pkt: Faulty data checksum\n" );
 					completion_code = CC_INVALID_DATA_IN_REQ;
@@ -336,11 +332,12 @@ ipmi_process_pkt( IPMI_WS * ws )
 				IPMI_IPMB_RESPONSE *ipmb_resp = ( IPMI_IPMB_RESPONSE * )&( ws->pkt_out );
 				IPMI_IPMB_REQUEST *ipmb_req = ( IPMI_IPMB_REQUEST * )&( ws->pkt_in );
 				
-				ipmb_resp->requester_slave_addr = ipmb_req->requester_slave_addr;
+//				ipmb_resp->requester_slave_addr = ipmb_req->requester_slave_addr;
+				requester_slave_addr = ipmb_req->requester_slave_addr;
 				ipmb_resp->netfn = ipmb_req->netfn + 1;
 				ipmb_resp->requester_lun = ipmb_req->requester_lun;
-				ipmb_resp->header_checksum = ipmi_calculate_checksum( ( char * )ipmb_resp, 2 );
-				ipmb_resp->responder_slave_addr = ipmb_req->responder_slave_addr;
+				ipmb_resp->header_checksum = -( *( char * )ipmb_resp + requester_slave_addr );
+				ipmb_resp->responder_slave_addr = module_get_i2c_address( I2C_ADDRESS_LOCAL );
 				ipmb_resp->req_seq = ipmb_req->req_seq;
 				ipmb_resp->responder_lun = ipmb_req->responder_lun;
 				ipmb_resp->command = ipmb_req->command;
@@ -415,6 +412,7 @@ ipmi_process_response( IPMI_PKT *pkt, unsigned char completion_code )
 {
 	IPMI_WS *req_ws = 0, *target_ws = 0, *resp_ws = 0;
 	uchar seq = 0;
+	uchar requester_slave_addr;
 
 	dputstr( DBG_IPMI | DBG_INOUT, "ipmi_process_response: ingress\n" );
 
@@ -461,11 +459,12 @@ ipmi_process_response( IPMI_PKT *pkt, unsigned char completion_code )
 			IPMI_IPMB_RESPONSE *ipmb_resp = ( IPMI_IPMB_RESPONSE * )&( req_ws->pkt_out );
 			IPMI_IPMB_REQUEST *ipmb_req = ( IPMI_IPMB_REQUEST * )&( req_ws->pkt_in );
 			
-			ipmb_resp->requester_slave_addr = ipmb_req->requester_slave_addr;
+//			ipmb_resp->requester_slave_addr = ipmb_req->requester_slave_addr;
+			requester_slave_addr = ipmb_req->requester_slave_addr;			
 			ipmb_resp->netfn = ipmb_req->netfn + 1;
 			ipmb_resp->requester_lun = ipmb_req->requester_lun;
-			ipmb_resp->header_checksum = ipmi_calculate_checksum( ( char * )ipmb_resp, 2 );
-			ipmb_resp->responder_slave_addr = ipmb_req->responder_slave_addr;
+			ipmb_resp->header_checksum = -( *( char * )ipmb_resp + requester_slave_addr );
+			ipmb_resp->responder_slave_addr = module_get_i2c_address( I2C_ADDRESS_LOCAL );
 			ipmb_resp->req_seq = ipmb_req->req_seq;
 			ipmb_resp->responder_lun = ipmb_req->responder_lun;
 			ipmb_resp->command = ipmb_req->command;
@@ -1090,7 +1089,7 @@ ipmi_read_fru_data( IPMI_PKT *pkt )
 		if( resp->count_returned > 20 ) /* TODO check size */
 			resp->count_returned = 20;
 		
-		memcpy( resp->data, fru_inventory_cache[i].fru_data + fru_inventory_offset,
+		memcpy( &( resp->data ), &( fru_inventory_cache[i].fru_data ) + fru_inventory_offset,
 			resp->count_returned );
 
 		pkt->hdr.resp_data_len = resp->count_returned + 1;
@@ -1133,7 +1132,8 @@ fru_read_complete( void *ws, int status )
 {
 	IPMI_WS *req_ws = ( (IPMI_WS *)( ws ) )->bridged_ws;
 	IPMI_WS *fru_ws = ( (IPMI_WS *)( ws ) );
-	IPMI_PKT *pkt = &req_ws->pkt;;
+	IPMI_PKT *pkt = &req_ws->pkt;
+	uchar requester_slave_addr;
 
 	//TODO copy data to cache
 
@@ -1148,11 +1148,12 @@ fru_read_complete( void *ws, int status )
 			IPMI_IPMB_REQUEST *ipmb_req = ( IPMI_IPMB_REQUEST * )&( req_ws->pkt_in );
 			
 			memcpy(ipmb_resp->data, fru_ws->pkt_in, IPMB_RESP_MAX_DATA_LEN ); //TODO check size
-			ipmb_resp->requester_slave_addr = ipmb_req->requester_slave_addr;
+//			ipmb_resp->requester_slave_addr = ipmb_req->requester_slave_addr;
+			requester_slave_addr = ipmb_req->requester_slave_addr;
 			ipmb_resp->netfn = ipmb_req->netfn + 1;
 			ipmb_resp->requester_lun = ipmb_req->requester_lun;
-			ipmb_resp->header_checksum = ipmi_calculate_checksum( ( char * )ipmb_resp, 2 );
-			ipmb_resp->responder_slave_addr = ipmb_req->responder_slave_addr;
+			ipmb_resp->header_checksum = -( *( char * )ipmb_resp + requester_slave_addr );
+			ipmb_resp->responder_slave_addr = module_get_i2c_address( I2C_ADDRESS_LOCAL );
 			ipmb_resp->req_seq = ipmb_req->req_seq;
 			ipmb_resp->responder_lun = ipmb_req->responder_lun;
 			ipmb_resp->command = ipmb_req->command;
@@ -1433,6 +1434,7 @@ void
 ipmi_send_message_cmd_complete( void *target_ws, int status )
 {
 	IPMI_WS *req_ws;
+	uchar requester_slave_addr;
 
 	dputstr( DBG_IPMI | DBG_INOUT, "ipmi_send_message_cmd_complete: ingress\n" );
 
@@ -1456,11 +1458,12 @@ ipmi_send_message_cmd_complete( void *target_ws, int status )
 					IPMI_IPMB_RESPONSE *ipmb_resp = ( IPMI_IPMB_RESPONSE * )&( req_ws->pkt_out );
 					IPMI_IPMB_REQUEST *ipmb_req = ( IPMI_IPMB_REQUEST * )&( req_ws->pkt_in );
 					
-					ipmb_resp->requester_slave_addr = ipmb_req->requester_slave_addr;
+//					ipmb_resp->requester_slave_addr = ipmb_req->requester_slave_addr;
+					requester_slave_addr = ipmb_req->requester_slave_addr;
 					ipmb_resp->netfn = ipmb_req->netfn + 1;
 					ipmb_resp->requester_lun = ipmb_req->requester_lun;
-					ipmb_resp->header_checksum = ipmi_calculate_checksum( ( char * )ipmb_resp, 2 );
-					ipmb_resp->responder_slave_addr = ipmb_req->responder_slave_addr;
+					ipmb_resp->header_checksum = -( *( char * )ipmb_resp + requester_slave_addr );
+					ipmb_resp->responder_slave_addr = module_get_i2c_address( I2C_ADDRESS_LOCAL );
 					ipmb_resp->req_seq = ipmb_req->req_seq;
 					ipmb_resp->responder_lun = ipmb_req->responder_lun;
 					ipmb_resp->command = ipmb_req->command;
