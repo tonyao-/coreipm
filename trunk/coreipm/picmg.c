@@ -264,6 +264,7 @@ picmg_get_picmg_properties( IPMI_PKT *pkt )
 	/* FRU Device ID for IPM Controller. Indicates a FRU Device ID for the
 	   FRU containing the IPM Controller. IPM Controllers implementing the
 	   extensions defined by the IPMI specification shall report 0. */
+	pkt->hdr.resp_data_len = sizeof( GET_PICMG_PROPERTIES_CMD_RESP ) - 1;
 
 }
 

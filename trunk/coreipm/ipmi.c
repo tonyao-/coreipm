@@ -53,6 +53,8 @@ support and contact details.
 #define WD_STATE_TIMER_RUNNING_POST_PRE_TIMEOUT_INTERRUPT	3
 
 #define FRU_LOCATOR_TABLE_SIZE	16
+//#define DUMP_RESPONSE
+
 
 typedef struct watchdog_info {
 	unsigned timer_handle;
@@ -350,7 +352,7 @@ ipmi_process_pkt( IPMI_WS * ws )
 				ws->len_out = sizeof(IPMI_IPMB_RESPONSE) 
 					- IPMB_RESP_MAX_DATA_LEN  +  pkt->hdr.resp_data_len;
 				/* Assign the checksum to it's proper location */
-				*( (uchar *)ipmb_resp + ws->len_out) = ipmb_resp->data_checksum;
+				*( (uchar *)ipmb_resp + ws->len_out - 1 ) = ipmb_resp->data_checksum;
 				}			
 				break;
 			
@@ -413,6 +415,7 @@ ipmi_process_response( IPMI_PKT *pkt, unsigned char completion_code )
 	IPMI_WS *req_ws = 0, *target_ws = 0, *resp_ws = 0;
 	uchar seq = 0;
 	uchar requester_slave_addr;
+	int i;
 
 	dputstr( DBG_IPMI | DBG_INOUT, "ipmi_process_response: ingress\n" );
 
@@ -432,6 +435,14 @@ ipmi_process_response( IPMI_PKT *pkt, unsigned char completion_code )
 	
 	if( !target_ws ) {
 		//call module response handler here
+#ifdef DUMP_RESPONSE
+		putstr( "\n[" );
+		for( i = 0; i < resp_ws->len_in; i++ ) {
+			puthex( resp_ws->pkt_in[i] );
+			putchar( ' ' );
+		}
+		putstr( "]\n" );
+#endif
 		ws_free( resp_ws );
 		return;
 	}
@@ -1089,7 +1100,7 @@ ipmi_read_fru_data( IPMI_PKT *pkt )
 		if( resp->count_returned > 20 ) /* TODO check size */
 			resp->count_returned = 20;
 		
-		memcpy( &( resp->data ), &( fru_inventory_cache[i].fru_data ) + fru_inventory_offset,
+		memcpy( &( resp->data ), fru_inventory_cache[i].fru_data + fru_inventory_offset,
 			resp->count_returned );
 
 		pkt->hdr.resp_data_len = resp->count_returned + 1;

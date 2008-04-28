@@ -129,7 +129,6 @@ int putchar_1( int ch );
 
 void serial_dbg_port_msg_send( unsigned char *buf ); 
 
-void puthex( unsigned char ch );
 /*
  
 +-----------------------------------------------------------------------------+
