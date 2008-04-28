@@ -415,8 +415,8 @@ fru_data_init( void )
 	// Note: all these are module specific
 	// ====================================================================
 	fru_inventory_cache[0].fru_dev_id = 0;
-	fru_inventory_cache[0].fru_inventory_area_size = sizeof(MODULE_CURRENT_REQUIREMENTS_RECORD);
-	fru_inventory_cache[0].fru_data = ( unsigned char * )(&fru_data);
+	fru_inventory_cache[0].fru_inventory_area_size = sizeof( fru_data );
+	fru_inventory_cache[0].fru_data = ( unsigned char * )( &fru_data );
 
 	// FRU data header
 	fru_data.hdr.format_version = 0x1;
@@ -439,7 +439,7 @@ fru_data_init( void )
 	fru_data.mcr.manuf_id_midb = 0x31;
 	fru_data.mcr.manuf_id_msb = 0x00;
 	fru_data.mcr.picmg_rec_id = 0x16; /* PICMG Record ID. For the Module Power 
-					     Descriptortable, the value 16h must be used. */
+					     Descriptor table, the value 16h must be used. */
 	fru_data.mcr.rec_fmt_ver = 0;	/* Record Format Version. As per AMC specification,
 					   the value 0h must be used. */
 	fru_data.mcr.curr_draw = 5;	/* Current Draw = 0.5A. In units of 0.1A at 12V */ 

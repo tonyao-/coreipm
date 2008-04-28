@@ -106,6 +106,7 @@ ipmi_get_device_sdr_info( IPMI_PKT *pkt )
 	/* resp->sensor_population_change_indicator; */
 	
 	resp->completion_code = CC_NORMAL;
+	pkt->hdr.resp_data_len = sizeof( GET_DEVICE_SDR_INFO_RESP ) - 1;	
 }	
 
 /*
