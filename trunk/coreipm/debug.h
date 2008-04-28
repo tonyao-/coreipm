@@ -53,3 +53,4 @@ void dputstr( unsigned flags, char *str);
 #define dprintf
 #endif
 
+void puthex( unsigned char ch );
