@@ -32,7 +32,8 @@ support and contact details.
 #include "i2c.h"
 #include "timer.h"
 #include "iopin.h"
-#include "mmcio.h"
+//#include "mmcio.h"
+#include "module.h"
 
 #define DEBUG_I2C_ADDRESS_1	0x20
 #define DEBUG_I2C_ADDRESS_2	0x28
@@ -112,19 +113,19 @@ void gpio_led_on( unsigned led_mask )
 	timer_remove_callout_queue( &led_blink );
 	
 	led_state |= led_mask;
-	
+/*	
 	if( led_state & GPIO_LED_0 ) iopin |= LED_0;
 	if( led_state & GPIO_LED_1 ) iopin |= LED_1;
-/*
 	if( led_state & GPIO_LED_2 ) iopin |= LED_2;
 	if( led_state & GPIO_LED_3 ) iopin |= LED_3;
 	if( led_state & GPIO_LED_4 ) iopin |= LED_4;
 	if( led_state & GPIO_LED_5 ) iopin |= LED_5;
 	if( led_state & GPIO_LED_6 ) iopin |= LED_6;
 	if( led_state & GPIO_LED_7 ) iopin |= LED_7;
-*/
 	
 	iopin_set( iopin );
+*/
+	module_led_on( led_state );
 }
 
 
@@ -134,19 +135,19 @@ void gpio_led_on_noreset( unsigned led_mask )
 	long long iopin = 0;
 
 	led_state |= led_mask;
-	
+/*	
 	if( led_state & GPIO_LED_0 ) iopin |= LED_0;
 	if( led_state & GPIO_LED_1 ) iopin |= LED_1;
-/*
 	if( led_state & GPIO_LED_2 ) iopin |= LED_2;
 	if( led_state & GPIO_LED_3 ) iopin |= LED_3;
 	if( led_state & GPIO_LED_4 ) iopin |= LED_4;
 	if( led_state & GPIO_LED_5 ) iopin |= LED_5;
 	if( led_state & GPIO_LED_6 ) iopin |= LED_6;
 	if( led_state & GPIO_LED_7 ) iopin |= LED_7;
-*/
 	
 	iopin_set( iopin );
+*/
+	module_led_on( led_state );
 }
 
 void gpio_led_off( unsigned led_mask )
@@ -157,19 +158,19 @@ void gpio_led_off( unsigned led_mask )
 	timer_remove_callout_queue( &led_blink );
 
 	led_state &= ( ~led_mask );
-
+/*
 	if( ~led_state & GPIO_LED_0 ) iopin |= LED_0;
 	if( ~led_state & GPIO_LED_1 ) iopin |= LED_1;
-/*
 	if( ~led_state & GPIO_LED_2 ) iopin |= LED_2;
 	if( ~led_state & GPIO_LED_3 ) iopin |= LED_3;
 	if( ~led_state & GPIO_LED_4 ) iopin |= LED_4;
 	if( ~led_state & GPIO_LED_5 ) iopin |= LED_5;
 	if( ~led_state & GPIO_LED_6 ) iopin |= LED_6;
 	if( ~led_state & GPIO_LED_7 ) iopin |= LED_7;
-*/
 
 	iopin_clear( iopin );
+*/
+	module_led_off( led_state );
 }
 
 
@@ -179,18 +180,20 @@ void gpio_led_off_noreset( unsigned led_mask )
 
 	led_state &= ( ~led_mask );
 
+/*
 	if( ~led_state & GPIO_LED_0 ) iopin |= LED_0;
 	if( ~led_state & GPIO_LED_1 ) iopin |= LED_1;
-/*
 	if( ~led_state & GPIO_LED_2 ) iopin |= LED_2;
 	if( ~led_state & GPIO_LED_3 ) iopin |= LED_3;
 	if( ~led_state & GPIO_LED_4 ) iopin |= LED_4;
 	if( ~led_state & GPIO_LED_5 ) iopin |= LED_5;
 	if( ~led_state & GPIO_LED_6 ) iopin |= LED_6;
 	if( ~led_state & GPIO_LED_7 ) iopin |= LED_7;
-*/
 
 	iopin_clear( iopin );
+*/
+	module_led_off( led_state );
+
 }
 
 void gpio_all_leds_on( void )

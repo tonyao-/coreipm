@@ -32,5 +32,9 @@ void module_quiesce( unsigned char dev_id );
 void module_event_handler( GENERIC_EVENT_MSG *evt_msg );
 unsigned char module_get_i2c_address( int address_type );
 void module_term_process( unsigned char * );
-
+void module_led_on( unsigned led_state );
+void module_led_off( unsigned led_state );
+void module_payload_on( void );
+void module_payload_off( void );
+void module_process_response( IPMI_WS *req_ws, unsigned char seq, unsigned char completion_code );
 

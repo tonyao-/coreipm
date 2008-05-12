@@ -435,6 +435,7 @@ ipmi_process_response( IPMI_PKT *pkt, unsigned char completion_code )
 	
 	if( !target_ws ) {
 		//call module response handler here
+		module_process_response( req_ws, seq, completion_code );
 #ifdef DUMP_RESPONSE
 		putstr( "\n[" );
 		for( i = 0; i < resp_ws->len_in; i++ ) {
@@ -445,9 +446,10 @@ ipmi_process_response( IPMI_PKT *pkt, unsigned char completion_code )
 #endif
 		ws_free( resp_ws );
 		return;
+	} else {
+		req_ws = target_ws->bridged_ws;
 	}
 
-	req_ws = target_ws->bridged_ws;
 	if( !req_ws ) {
 		ws_free( resp_ws );
 		ws_free( target_ws );

@@ -702,8 +702,8 @@ ipmi_get_event_receiver( IPMI_PKT *pkt )
 }
 
 
-void
-ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len )
+int
+ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len, void(*ipmi_completion_function)( void *, int ) )
 {
 	IPMI_PKT *pkt;
 	IPMI_WS *req_ws;
@@ -713,7 +713,7 @@ ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len )
 	ipmi_event_init();
 
 	if( !( req_ws = ws_alloc() ) ) {
-		return;
+		return( -1 );
 	}
 	
 	pkt = &req_ws->pkt;
@@ -724,6 +724,7 @@ ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len )
 	
 	req_ws->outgoing_protocol = IPMI_CH_PROTOCOL_IPMB;
 	req_ws->outgoing_medium = IPMI_CH_MEDIUM_IPMB;
+	req_ws->ipmi_completion_function = ipmi_completion_function;
 	
 	switch( req_ws->outgoing_protocol ) {
 		case IPMI_CH_PROTOCOL_IPMB: {
@@ -780,10 +781,12 @@ ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len )
 		case IPMI_CH_PROTOCOL_BT10:		/* BT System Interface Format, IPMI v1.0 */
 		case IPMI_CH_PROTOCOL_BT15:		/* BT System Interface Format, IPMI v1.5 */
 			/* Unsupported protocol */
-			break;
+			ws_free( req_ws );
+			return( -1 );
 	}
 	
 	ws_set_state( req_ws, WS_ACTIVE_MASTER_WRITE );
 
+	return( seq );
 }
 
