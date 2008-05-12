@@ -26,13 +26,14 @@ support and contact details.
 
 #include "arch.h"
 #include "timer.h"
-//#include "ipmcio.h"
 #include "serial.h"
 #include "debug.h"
 #include "lpc21nn.h"
 #include "a3803io.h"
 #include "iopin.h"
-
+#include "ipmi.h"
+#include "module.h"
+#include "gpio.h"
 
 
 
@@ -90,5 +91,48 @@ void iopin_initialize( void )
 		BLUE_LED ); 
 	
 	IODIR1 = ( unsigned int ) ( 0 );
+
+}
+
+void
+module_led_on( unsigned led_state )
+{
+	long long iopin = 0;
+
+	if( ~led_state & GPIO_LED_0 ) iopin |= LED_0;
+	if( ~led_state & GPIO_LED_1 ) iopin |= LED_1;
+
+	iopin_clear( iopin );
+
+}
+
+void
+module_led_off( unsigned led_state )
+{
+	long long iopin = 0;
+	
+	if( led_state & GPIO_LED_0 ) iopin |= LED_0;
+	if( led_state & GPIO_LED_1 ) iopin |= LED_1;
+
+	iopin_set( iopin );
+}
+
+/*
+ * Enable the MAX1858 step-down power supply controller device.
+ * MAX1858 takes the 12V payload power and generates secondary voltages
+ * required for the board.
+ * 
+ * Active-High Enable. A logic low shuts down secondary power.
+ */
+void
+module_payload_on( void )
+{
+	iopin_set( PAYLOAD_POWER );
+}
+
+void
+module_payload_off( void )
+{
+	iopin_clear( PAYLOAD_POWER );
 
 }

@@ -441,7 +441,7 @@ picmg_m1_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ), 0 );
 
 	/* if the Insertion Criteria Met condition exists then we can go to M2 state */
 	if( ( gpio_get_handle_switch_state() == HANDLE_SWITCH_CLOSED ) && ( !fru[fru_id].locked ) ) {
@@ -485,7 +485,7 @@ picmg_m2_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 	
 	/* dispatch message */
-	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ), 0 );
 }
 
 
@@ -685,7 +685,7 @@ picmg_m3_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ), 0 );
 
 }
 
@@ -723,7 +723,7 @@ picmg_m4_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ), 0 );
 
 }
 
@@ -761,7 +761,7 @@ picmg_m5_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ), 0 );
 
 }
 
@@ -802,7 +802,7 @@ picmg_m6_state( unsigned fru_id )
 	msg.evt_data3 = controller_fru_dev_id;
 
 	/* dispatch message */
-	ipmi_send_event_req( ( unsigned  char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	ipmi_send_event_req( ( unsigned  char * )&msg, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ), 0 );
 
 	picmg_m1_state( fru_id );
 }

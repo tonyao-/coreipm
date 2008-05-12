@@ -34,5 +34,4 @@ void ipmi_platform_event( IPMI_PKT *pkt );
 void ipmi_set_event_receiver( IPMI_PKT *pkt );
 void ipmi_get_event_receiver( IPMI_PKT *pkt );
 int event_data_compare( uchar test_value, PEF_MASK *pef_mask );
-void ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len );
-void ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len );
+int ipmi_send_event_req( uchar *msg_cmd, unsigned msg_len, void(*ipmi_completion_function)( void *, int ) );

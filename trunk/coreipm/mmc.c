@@ -39,11 +39,15 @@ support and contact details.
 #include "debug.h"
 #include "arch.h" 
 #include "timer.h"
+#include "ws.h"
 
 
 unsigned char mmc_ipmbl_address;
 unsigned char mmc_state;
+unsigned char mmc_hot_swap_state;
 unsigned char switch_poll_timer_handle;
+unsigned send_event_retry_timer_handle;
+unsigned char pending_cmd_seq;
 
 #define MMC_STATE_RESET		0
 #define MMC_STATE_RUNNING	1
@@ -109,7 +113,9 @@ struct fru_data {
 void module_init2( void );
 void mmc_hot_swap_state_change( unsigned char new_state );
 void switch_state_poll( unsigned char *arg );
+void send_event_retry( unsigned char *arg );
 void fru_data_init( void );
+void mmc_send_event_complete( IPMI_WS *ws, int status );
 
 /*==============================================================
  * MMC ADDRESSING
@@ -282,6 +288,7 @@ module_init( void )
 	mmc_state = MMC_STATE_RUNNING;
 	i2c_interface_enable_local_control( 0, 0 );
 	fru_data_init();
+	module_payload_on();
 
 	// ====================================================================
 	// Handle current state of Hot Swap Handle 
@@ -300,6 +307,7 @@ module_init( void )
 	unsigned char reset_state = iopin_get( EINT_RESET );
 
 	fru_data_init();
+	module_payload_on();
 	
 	// level-sensitivity is selected for EINT2.
 	EXTMODE &= 0xfb;	/* 0: Level-sensitive
@@ -395,10 +403,9 @@ switch_state_poll( unsigned char *arg )
 		( handle_state == HANDLE_SWITCH_OPEN )?
 			mmc_hot_swap_state_change( MODULE_HANDLE_OPENED ):
 			mmc_hot_swap_state_change( MODULE_HANDLE_CLOSED );
+		hot_swap_handle_last_state = handle_state;
 	}
 	
-	hot_swap_handle_last_state = handle_state;
-
 	// Re-start the timer
 	timer_add_callout_queue( (void *)&switch_poll_timer_handle,
 		       	5*HZ, switch_state_poll, 0 ); /* 5 sec timeout */
@@ -495,9 +502,86 @@ mmc_hot_swap_state_change( unsigned char new_state )
 	msg_req.evt_direction = IPMI_EVENT_TYPE_GENERIC_AVAILABILITY;
 	msg_req.evt_data1 = new_state;	
 
+	// remove any previously undelivered events from the callout queue
+	timer_remove_callout_queue( (void *)&send_event_retry_timer_handle );
+	if( send_event_retry_timer_handle )	 {
+		ws_free( ( IPMI_WS * )send_event_retry_timer_handle );
+		send_event_retry_timer_handle = 0;
+	}
+
 	/* dispatch message */
-	ipmi_send_event_req( ( unsigned char * )&msg_req, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ) );
+	pending_cmd_seq = ipmi_send_event_req( ( unsigned char * )&msg_req, sizeof( FRU_HOT_SWAP_EVENT_MSG_REQ ), mmc_send_event_complete );
 }
+
+
+void
+mmc_send_event_complete( IPMI_WS *ws, int status )
+{
+	switch ( status ) {
+		case XPORT_REQ_NOERR:
+			ws_free( ws );
+			break;
+		case XPORT_REQ_ERR:
+		case XPORT_RESP_NOERR:
+		case XPORT_RESP_ERR:
+		default:
+			// If event delivery failed, start the timer and retry
+			send_event_retry_timer_handle = ( unsigned int )ws;
+ 			timer_add_callout_queue( (void *)&send_event_retry_timer_handle,
+		       		5*HZ, send_event_retry,( unsigned char * )ws ); /* 5 sec timeout */
+
+			break;
+	}
+}
+
+
+void
+send_event_retry( unsigned char *arg )
+{
+	IPMI_WS *ws = ( IPMI_WS * )arg;
+
+	ws_set_state( ws, WS_ACTIVE_MASTER_WRITE );
+}
+
+
+void
+module_process_response( 
+	IPMI_WS *req_ws, 
+	unsigned char seq,
+	unsigned char completion_code )
+{
+	switch( completion_code ) {
+		case CC_NORMAL:
+		case CC_BUSY:
+		case CC_INVALID_CMD:
+		case CC_INVALID_CMD_FOR_LUN:
+		case CC_TIMEOUT:
+		case CC_OUT_OF_SPACE:
+		case CC_RESERVATION:
+		case CC_RQST_DATA_TRUNCATED:
+		case CC_RQST_DATA_LEN_INVALID:
+		case CC_DATA_LEN_EXCEEDED:
+		case CC_PARAM_OUT_OF_RANGE:
+		case CC_CANT_RETURN_REQ_BYTES:
+		case CC_REQ_DATA_NOT_AVAIL:
+		case CC_INVALID_DATA_IN_REQ:
+		case CC_CMD_ILLEGAL:
+		case CC_CMD_RESP_NOT_PROVIDED:
+		case CC_CANT_EXECUTE_DUP_REQ:
+		case CC_SDR_IN_UPDATE_MODE:
+		case CC_FW_IN_UPDATE_MODE:
+		case CC_INITIALIZATION:
+		case CC_DEST_UNAVAILABLE:
+		case CC_SECURITY_RESTRICTION:
+		case CC_NOT_SUPPORTED:
+		case CC_PARAM_ILLEGAL:
+		case CC_UNSPECIFIED_ERROR:
+		default:
+			break;
+	}
+
+}
+
 
 void
 mmc_reset_state( void )
