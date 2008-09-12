@@ -24,7 +24,7 @@ support and contact details.
 -------------------------------------------------------------------------------
 */
 
-#include "LPC21nn.h"
+#include "lpc21nn.h"
 
 // Interrupt Enable register (VICIntEnable) bit allocation
 					// Bit   
@@ -96,10 +96,10 @@ support and contact details.
  * 	ENABLE_INTERRUPTS( interrupt_mask );
  */
 #define CURRENT_INTERRUPT_MASK	VICIntEnable
-#define DISABLE_INTERRUPTS	( VICIntEnClr = 0xFFFFFFFF )		// disable all interrupts handled by VIC
-#define ENABLE_INTERRUPTS(mask)	( VICIntEnable = mask ) 
-	
-
+//#define DISABLE_INTERRUPTS	( VICIntEnClr = 0xFFFFFFFF )		// disable all interrupts handled by VIC
+//#define ENABLE_INTERRUPTS(mask)	( VICIntEnable = mask ) 
+#define DISABLE_INTERRUPTS	
+#define ENABLE_INTERRUPTS(mask)
 
 /*======================================================================*/
 /*			Controller Types				*/

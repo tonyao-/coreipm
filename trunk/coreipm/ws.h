@@ -35,7 +35,7 @@ support and contact details.
 #define WS_ACTIVE_MASTER_READ		0x8
 #define WS_ACTIVE_MASTER_READ_PENDING	0x9
 
-#define WS_ARRAY_SIZE	8
+#define WS_ARRAY_SIZE	16
 #define WS_BUF_LEN 32
 
 #define WS_FL_GENERAL_CALL	1

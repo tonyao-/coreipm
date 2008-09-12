@@ -24,7 +24,7 @@ support and contact details.
 -------------------------------------------------------------------------------
 */
 
-// #include "arch.h"
+#include "arch.h"
 #include "ipmi.h"
 #include "i2c.h"
 #include "debug.h"
@@ -59,7 +59,9 @@ ws_alloc( void )
 	IPMI_WS *ws = 0;
 	IPMI_WS *ptr = ws_array;
 	unsigned i;
-	
+	//unsigned int interrupt_mask = CURRENT_INTERRUPT_MASK;	
+
+	//DISABLE_INTERRUPTS;
 	for ( i = 0; i < WS_ARRAY_SIZE; i++ )
 	{
 		ptr = &ws_array[i];
@@ -69,6 +71,7 @@ ws_alloc( void )
 			break;
 		}
 	}
+	//ENABLE_INTERRUPTS( interrupt_mask );
 	return ws;
 }
 
@@ -93,7 +96,9 @@ ws_get_elem( unsigned state )
 	IPMI_WS *ws = 0;
 	IPMI_WS *ptr = ws_array;
 	unsigned i;
-	
+	//unsigned int interrupt_mask = CURRENT_INTERRUPT_MASK;	
+
+	//DISABLE_INTERRUPTS;	
 	for ( i = 0; i < WS_ARRAY_SIZE; i++ )
 	{
 		ptr = &ws_array[i];
@@ -109,7 +114,8 @@ ws_get_elem( unsigned state )
 	
 	if( ws )
 		ws->timestamp = lbolt;
-	
+
+	//ENABLE_INTERRUPTS( interrupt_mask );
 	return ws;
 }
 
@@ -119,7 +125,9 @@ ws_get_elem_seq( uchar seq, IPMI_WS *ws_ignore )
 	IPMI_WS *ws = 0;
 	IPMI_WS *ptr = ws_array;
 	unsigned i;
-	
+	unsigned int interrupt_mask = CURRENT_INTERRUPT_MASK;	
+
+	//DISABLE_INTERRUPTS;		
 	for ( i = 0; i < WS_ARRAY_SIZE; i++ )
 	{
 		ptr = &ws_array[i];
@@ -130,8 +138,8 @@ ws_get_elem_seq( uchar seq, IPMI_WS *ws_ignore )
 			break;
 		}
 	}
+	//ENABLE_INTERRUPTS( interrupt_mask );
 	return ws;
-
 }
 
 void
@@ -160,7 +168,7 @@ void ws_process_work_list( void )
 	}
 	ws = ws_get_elem( WS_ACTIVE_MASTER_WRITE );
 	if( ws ) {
-		dputstr( DBG_WS | DBG_LVL1, "ws_process_work_list: found a WS_ACTIVE_MASTER_WRITE req\n" );
+		//dputstr( DBG_WS | DBG_LVL1, "ws_process_work_list: found a WS_ACTIVE_MASTER_WRITE req\n" );
 		ws_set_state( ws, WS_ACTIVE_MASTER_WRITE_PENDING );
 		switch( ws->outgoing_medium ) {
 			case IPMI_CH_MEDIUM_IPMB:
@@ -181,7 +189,7 @@ void ws_process_work_list( void )
 			case IPMI_CH_MEDIUM_USB_1x:	/* reserved for USB 1.x			*/
 			case IPMI_CH_MEDIUM_USB_20:	/* reserved for USB 2.x			*/
 			case IPMI_CH_MEDIUM_SYS:	/* System Interface (KCS, SMIC, or BT)	*/
-				dputstr( DBG_WS | DBG_ERR, "ws_process_work_list: unsupported protocol\n" );
+				//dputstr( DBG_WS | DBG_ERR, "ws_process_work_list: unsupported protocol\n" );
 				ws_free( ws );
 				break;
 		}

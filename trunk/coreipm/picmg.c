@@ -55,14 +55,14 @@ support and contact details.
 
 FRU_INFO fru[MAX_FRU_DEV_ID + 1];
 FRU_FAN_INFO fru_fan[MAX_FRU_DEV_ID + 1];
-PICMG_ADDRESS_INFO picmg_address_info_table[NUM_PICMG_ADDRESS_INFO_TABLE_ENTRIES] = { 0, 0, 0, 0 };
+PICMG_ADDRESS_INFO picmg_address_info_table[NUM_PICMG_ADDRESS_INFO_TABLE_ENTRIES] = { { 0, 0, 0, 0, 0 } };
 uchar controller_fru_dev_id = 0; // fru dev id for the BMC
 
 #define NUM_IPMB_SENSORS			2
 struct {
 	uchar	link_number;
 	uchar	sensor_number;
-} ipmb_sensor[NUM_IPMB_SENSORS] = { 0, 0, 1, 1 };
+} ipmb_sensor[NUM_IPMB_SENSORS] = { { 0, 0 }, { 1, 1 } };
 
 #define NUM_LINK_INFO_ENTRIES	8
 LINK_INFO_ENTRY link_info_table[NUM_LINK_INFO_ENTRIES];

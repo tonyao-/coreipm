@@ -42,8 +42,16 @@ typedef struct sensor_data {
 #endif 
 } SENSOR_DATA;
 
+typedef struct sdr_entry {
+	unsigned short	record_id;
+	uchar	rec_len;
+	uchar	*record_ptr;
+} SDR_ENTRY;
+
+
 void ipmi_get_device_sdr_info( IPMI_PKT *pkt );
 void ipmi_get_device_sdr( IPMI_PKT *pkt );
 void ipmi_reserve_device_sdr_repository( IPMI_PKT *pkt );
 void ipmi_get_sensor_reading( IPMI_PKT *pkt );
+int  sensor_add( FULL_SENSOR_RECORD *sdr, SENSOR_DATA *sensor_data ); 
 

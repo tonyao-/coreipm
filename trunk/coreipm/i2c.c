@@ -206,7 +206,7 @@ void i2c_initialize( void )
 	/* I2C_CLOCK_RATE = PCLK / I2CSCLH + I2CSCLL */
 	//I2C0SCLH = 50; /* For 120 KHz i2c clock using a 12 MHz chip clock */
 	//I2C0SCLL = 50;
-	I2C0SCLH = PCLK / I2C_CLOCK_RATE;
+	I2C0SCLH = PCLK / I2C_CLOCK_RATE / 2;
 	I2C0SCLL = I2C0SCLH;
 
 
@@ -354,9 +354,6 @@ The IPMI spec indicates that the IPMB message format for the Broadcast Get Devic
 ID request exactly matches that for the Get Device ID command, with the exception
 that the IPMB message is prefixed with the 00h broadcast address.
 
-The question is: Is the first data byte to be handled as defined in the i2c spec.
-or as a slave address as implied in IPMI ?
-
 */
 /*==============================================================
  * i2c_proc_stat()
@@ -382,8 +379,8 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 			 */
 			
 			if( ( !context->ws ) || ( context->state != I2STAT_START_MASTER ) || 
-					( context->op_type != OP_MODE_MASTER_XMIT ) &&
-			 		( context->op_type != OP_MODE_MASTER_RCV ) ) 
+					( ( context->op_type != OP_MODE_MASTER_XMIT ) &&
+			 		( context->op_type != OP_MODE_MASTER_RCV ) ) ) 
 			{
 				/* error condition */
 				if( context->ws ) {
@@ -505,7 +502,7 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 			start_timer = 0;
 			context->op_type = OP_MODE_SLAVE;
 			I2CCONSET( I2C_CTRL_FL_STO, channel );
-			I2CCONCLR( I2C_CTRL_FL_SI, channel ); 
+			I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_STA , channel ); 
 			break;
 			
 		case I2STAT_MASTER_DATA_SENT_ACKED:
@@ -678,13 +675,19 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 		/* Slave receiver mode*/
 		case I2STAT_SLAW_RCVD_ACKED: 
 			/* Own SLA+W has been rcvd; ACK has been returned. */
-
-			/* illegal state transition handling */
-			if( context->state != I2STAT_NADDR_SLAVE_MODE ) {
+			if( context->state == I2STAT_START_MASTER ) {
+				/* we tried sending a STA but failed, the upper layer should re-schedule */
+				if( context->ws ) {
+					(*context->ws->xport_completion_function)( context->ws, I2ERR_ARBITRATION_LOST );
+					context->ws = 0;
+				}
+				I2CCONCLR( I2C_CTRL_FL_STA, channel ); 
+			} else if( context->state != I2STAT_NADDR_SLAVE_MODE ) {
+				/* illegal state transition handling */
 				context->state = I2STAT_SLAW_RCVD_ACKED;
 				start_timer = 0;
 				/* Return NAK, we should transition to SLAVE_DATA_RECEIVED_NOT_ACKED */
-				I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_AA, channel ); 
+				I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_AA | I2C_CTRL_FL_STA, channel ); 
 				break;
 			}
 			
@@ -791,7 +794,9 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 			/* Previously addressed with own Slave Address. Data 
 			 * has been received and NOT ACK has been returned. 
 			 * Received data will not be saved. Master will send
-			 * a STOP. */			
+			 * a STOP. */
+			context->state = I2STAT_NADDR_SLAVE_MODE;
+			
 			I2CCONSET( I2C_CTRL_FL_AA, channel );
 			I2CCONCLR( I2C_CTRL_FL_SI, channel );
 			break;
@@ -882,10 +887,11 @@ i2c_proc_stat(unsigned i2stat, unsigned channel)
 				context->ws = 0;
 			}
 			I2CCONSET( I2C_CTRL_FL_AA | I2C_CTRL_FL_STO, channel );
-			I2CCONCLR( I2C_CTRL_FL_SI, channel );
+			I2CCONCLR( I2C_CTRL_FL_SI | I2C_CTRL_FL_STA, channel );
 			break;
 			
 		default:
+			I2CCONCLR( I2C_CTRL_FL_SI, channel );
 			break;
 	}
 
@@ -945,7 +951,7 @@ i2c_timeout( unsigned char *arg )
 void
 i2c_master_read( IPMI_WS *ws )
 {
-	unsigned channel;
+	unsigned channel = 0;
 	I2C_CONTEXT *context;
 
 	ws->xport_completion_function = i2c_master_complete; 
@@ -979,6 +985,10 @@ i2c_master_read( IPMI_WS *ws )
 			break;
 	} 
 	
+	// TODO fix this code, this is a hack.
+	if( ws->interface == 1 )
+		channel = i2c_last_channel_used = ws->interface;
+
 	context = &i2c_context[channel];
 	
 	if( context->state == I2STAT_NADDR_SLAVE_MODE ) {
@@ -1017,7 +1027,7 @@ i2c_master_read( IPMI_WS *ws )
 void 
 i2c_master_write( IPMI_WS *ws )
 {
-	unsigned channel;
+	unsigned channel = 0;
 	I2C_CONTEXT *context;
 
 	ws->xport_completion_function = i2c_master_complete; 

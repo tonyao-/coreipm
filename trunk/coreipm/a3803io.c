@@ -34,6 +34,7 @@ support and contact details.
 #include "ipmi.h"
 #include "module.h"
 #include "gpio.h"
+#include "lm75.h"
 
 
 
@@ -74,7 +75,7 @@ void iopin_initialize( void )
 		PS1_P0_30_EINT_3    |
 		PS1_P0_31_GPIO;		
 
-	PINSEL2 |= 
+	PINSEL2 = 
 		PS2_P1_16_25_GPIO   |	// Pins P1.25-16 are used as GPIO pins.
 		PS2_P1_26_36_DEBUG;	// Pins P1.36-26 are used as a Debug port.
 
@@ -85,12 +86,12 @@ void iopin_initialize( void )
 	iopin_clear( PAYLOAD_POWER );	// start with payload power off
 
 	IODIR0 = ( unsigned int ) (
-		P1		|	
 		PAYLOAD_POWER	|
-		LED_1		|
 		BLUE_LED ); 
 	
-	IODIR1 = ( unsigned int ) ( 0 );
+	IODIR1 = ( unsigned int ) ( (
+		P1	|
+		LED_1 ) >> 32);
 
 }
 
@@ -99,8 +100,8 @@ module_led_on( unsigned led_state )
 {
 	long long iopin = 0;
 
-	if( ~led_state & GPIO_LED_0 ) iopin |= LED_0;
-	if( ~led_state & GPIO_LED_1 ) iopin |= LED_1;
+	if( led_state & GPIO_LED_0 ) iopin |= LED_0;
+	if( led_state & GPIO_LED_1 ) iopin |= LED_1;
 
 	iopin_clear( iopin );
 
@@ -111,8 +112,8 @@ module_led_off( unsigned led_state )
 {
 	long long iopin = 0;
 	
-	if( led_state & GPIO_LED_0 ) iopin |= LED_0;
-	if( led_state & GPIO_LED_1 ) iopin |= LED_1;
+	if( ~led_state & GPIO_LED_0 ) iopin |= LED_0;
+	if( ~led_state & GPIO_LED_1 ) iopin |= LED_1;
 
 	iopin_set( iopin );
 }

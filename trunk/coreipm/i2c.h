@@ -53,7 +53,7 @@ Available addresses are therefore:
 #define I2C_ADDRESS_REMOTE	1
 
 #define I2C_NUM_CHANNELS	2
-#define I2C_CLOCK_RATE		400000
+#define I2C_CLOCK_RATE		100000
 
 /*==============================================================*/
 /* I2C control flags						*/

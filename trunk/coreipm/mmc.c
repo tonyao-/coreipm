@@ -24,7 +24,7 @@ support and contact details.
 -------------------------------------------------------------------------------
 */
 
-
+#include "string.h"
 #include "ipmi.h"
 #include "amc.h"
 #include "mmc.h"
@@ -32,7 +32,7 @@ support and contact details.
 #include "event.h"
 #include "module.h"
 #include "lpc21nn.h"
-#include "mmcio.h"
+#include "moduleio.h"
 #include "iopin.h"
 #include "i2c.h"
 #include "event.h"
@@ -40,6 +40,7 @@ support and contact details.
 #include "arch.h" 
 #include "timer.h"
 #include "ws.h"
+#include "sensor.h"
 
 
 unsigned char mmc_ipmbl_address;
@@ -100,6 +101,8 @@ unsigned char hot_swap_handle_last_state;
 
 // FRU info data
 extern FRU_CACHE fru_inventory_cache[];
+extern unsigned char current_sensor_count;
+/*
 struct fru_data {
 	FRU_COMMON_HEADER hdr;
 	FRU_INTERNAL_USE_AREA internal;
@@ -108,7 +111,30 @@ struct fru_data {
 	PRODUCT_AREA_FORMAT_HDR product;
 	MODULE_CURRENT_REQUIREMENTS_RECORD mcr;
 } fru_data;
+*/
+struct fru_data {
+	FRU_COMMON_HEADER hdr;
+	unsigned char internal[72];
+	unsigned char chassis[32];
+	unsigned char board[64];
+	unsigned char product[80];
+	AMC_P2P_CONN_RECORD p2p_rec;
+	uchar amc_ch_descr1[3];
+	uchar amc_ch_descr2[3];
+	uchar amc_link_descr1[5];
+	uchar amc_link_descr2[5];
+	uchar amc_link_descr3[5];
+	uchar amc_link_descr4[5];
+	uchar amc_link_descr5[5];
+	MODULE_CURRENT_REQUIREMENTS_RECORD mcr;
+	MULTIRECORD_AREA_HEADER last_record;
+} fru_data;
 
+extern SDR_ENTRY sdr_entry_table[];
+
+/* Hot swap sensor records */
+FULL_SENSOR_RECORD hssr;
+SENSOR_DATA hssd;
 
 void module_init2( void );
 void mmc_hot_swap_state_change( unsigned char new_state );
@@ -116,6 +142,7 @@ void switch_state_poll( unsigned char *arg );
 void send_event_retry( unsigned char *arg );
 void fru_data_init( void );
 void mmc_send_event_complete( IPMI_WS *ws, int status );
+void hotswap_init_sensor_record( void );
 
 /*==============================================================
  * MMC ADDRESSING
@@ -288,11 +315,19 @@ module_init( void )
 	mmc_state = MMC_STATE_RUNNING;
 	i2c_interface_enable_local_control( 0, 0 );
 	fru_data_init();
+	// hotswap_init_sensor_record();
+	module_sensor_init();
 	module_payload_on();
 
 	// ====================================================================
 	// Handle current state of Hot Swap Handle 
-	mmc_hot_swap_state_change( handle_state );
+	/*
+	if( handle_state == HANDLE_SWITCH_CLOSED )
+			mmc_hot_swap_state_change( MODULE_HANDLE_CLOSED );
+	*/
+	( handle_state == HANDLE_SWITCH_OPEN )?
+			mmc_hot_swap_state_change( MODULE_HANDLE_OPENED ):
+			mmc_hot_swap_state_change( MODULE_HANDLE_CLOSED );
 
 	// ====================================================================
 	// check the hot swap switch periodically
@@ -307,6 +342,8 @@ module_init( void )
 	unsigned char reset_state = iopin_get( EINT_RESET );
 
 	fru_data_init();
+	//hotswap_init_sensor_record();
+	module_sensor_init();
 	module_payload_on();
 	
 	// level-sensitivity is selected for EINT2.
@@ -412,6 +449,16 @@ switch_state_poll( unsigned char *arg )
 
 }
 
+void
+module_rearm_events( void )
+{
+	unsigned char handle_state = iopin_get( HOT_SWAP_HANDLE );
+
+	( handle_state == HANDLE_SWITCH_OPEN )?
+			mmc_hot_swap_state_change( MODULE_HANDLE_OPENED ):
+			mmc_hot_swap_state_change( MODULE_HANDLE_CLOSED );
+
+}
 
 void
 fru_data_init( void )
@@ -431,18 +478,74 @@ fru_data_init( void )
 	fru_data.hdr.chassis_info_offset = 0;
 	fru_data.hdr.board_offset = 0;
 	fru_data.hdr.product_info_offset = 0;
-	fru_data.hdr.multirecord_offset = ( char * )&( fru_data.mcr ) - ( char * )&( fru_data );
-	fru_data.hdr.checksum = ipmi_calculate_checksum( ( char * )&( fru_data.hdr ), sizeof( FRU_COMMON_HEADER ) - 1 );
+	fru_data.hdr.multirecord_offset = ( ( char * )&( fru_data.p2p_rec ) - ( char * )&( fru_data ) ) >> 3;
+	fru_data.hdr.pad = 0;
+	fru_data.hdr.checksum = ipmi_calculate_checksum( ( unsigned char * )&( fru_data.hdr ), sizeof( FRU_COMMON_HEADER ) - 1 );
+
+	/* Point-to-point connectivity record */
+	fru_data.p2p_rec.record_type_id = 0xC0;	/* For all records a value of C0h (OEM) shall be used. */
+	fru_data.p2p_rec.eol = 0;		/* [7:7] End of list. Set to one for the last record */
+	fru_data.p2p_rec.reserved = 0;		/* Reserved, write as 0h.*/
+	fru_data.p2p_rec.version = 2;		/* record format version (2h for this definition) */
+	fru_data.p2p_rec.record_len = 0x27;	/* Record Length. */
+	fru_data.p2p_rec.header_cksum = ipmi_calculate_checksum( ( unsigned char * )&( fru_data.p2p_rec.record_type_id ), 4 );;
+	/* Manufacturer ID - For the AMC specification the value 12634 (00315Ah) must be used. */
+	fru_data.p2p_rec.manuf_id[0] = 0x5A;
+	fru_data.p2p_rec.manuf_id[1] = 0x31;
+	fru_data.p2p_rec.manuf_id[2] = 0x00;		
+	fru_data.p2p_rec.picmg_rec_id = 0x19;	/* 0x19 for AMC Point-to-Point Connectivity record */
+	fru_data.p2p_rec.rec_fmt_ver = 0;	/* Record Format Version, = 0 for this specification */
+	fru_data.p2p_rec.oem_guid_count = 0;	/* OEM GUID Count */
+	fru_data.p2p_rec.record_type = 1;	/* 1 = AMC Module */
+	fru_data.p2p_rec.conn_dev_id = 0;	/* Connected-device ID if Record Type = 0, Reserved, otherwise. */
+	fru_data.p2p_rec.ch_descr_count = 2;	/* AMC Channel Descriptor Count */
+
+	fru_data.amc_ch_descr1[0] = 0xA4;
+	fru_data.amc_ch_descr1[1] = 0x98;
+	fru_data.amc_ch_descr1[2] = 0xF3;
+	
+	fru_data.amc_ch_descr2[0] = 0x28;
+	fru_data.amc_ch_descr2[1] = 0xA9;
+	fru_data.amc_ch_descr2[2] = 0xF5;
+
+	fru_data.amc_link_descr1[0] = 0x00;
+	fru_data.amc_link_descr1[1] = 0x2F;
+	fru_data.amc_link_descr1[2] = 0x00;
+	fru_data.amc_link_descr1[3] = 0x01;
+	fru_data.amc_link_descr1[4] = 0xFD;
 		
+	fru_data.amc_link_descr2[0] = 0x01;
+	fru_data.amc_link_descr2[1] = 0x2F;
+	fru_data.amc_link_descr2[2] = 0x00;
+	fru_data.amc_link_descr2[3] = 0x01;
+	fru_data.amc_link_descr2[4] = 0xFD;
+		
+	fru_data.amc_link_descr3[0] = 0x00;
+	fru_data.amc_link_descr3[1] = 0x2F;
+	fru_data.amc_link_descr3[2] = 0x00;
+	fru_data.amc_link_descr3[3] = 0x00;
+	fru_data.amc_link_descr3[4] = 0xFD;
+
+	fru_data.amc_link_descr4[0] = 0x00;
+	fru_data.amc_link_descr4[1] = 0x23;
+	fru_data.amc_link_descr4[2] = 0x00;
+	fru_data.amc_link_descr4[3] = 0x00;
+	fru_data.amc_link_descr4[4] = 0xFD;
+
+	fru_data.amc_link_descr5[0] = 0x00;
+	fru_data.amc_link_descr5[1] = 0x21;
+	fru_data.amc_link_descr5[2] = 0x00;
+	fru_data.amc_link_descr5[3] = 0x00;
+	fru_data.amc_link_descr5[4] = 0xFD;
+	
+	fru_data.p2p_rec.record_cksum =  ipmi_calculate_checksum( ( unsigned char * )&( fru_data.p2p_rec.manuf_id[0] ), 39 );;	
+
 	// Current requirements
 	fru_data.mcr.rec_type_id = 0xc0;
-	fru_data.mcr.end_list = 1;	/* End of List. Set to one for the last record */
+	fru_data.mcr.end_list = 0;	/* End of List. Set to one for the last record */
 	fru_data.mcr.rec_format = 0x2;	/* Record format version (= 2h for this definition) */
-	fru_data.mcr.rec_length;	/* Record Length */
-	fru_data.mcr.rec_cksum;	/* Record Checksum. */
-	fru_data.mcr.hdr_cksum;	/* Header Checksum. */
-	/* Manufacturer ID. For the AMC specification the value 12634 (00315Ah) must be used. */
-	fru_data.mcr.manuf_id_lsb = 0x5a;
+	fru_data.mcr.rec_length = 0x6;	/* Record Length */
+	fru_data.mcr.manuf_id_lsb = 0x5A;
 	fru_data.mcr.manuf_id_midb = 0x31;
 	fru_data.mcr.manuf_id_msb = 0x00;
 	fru_data.mcr.picmg_rec_id = 0x16; /* PICMG Record ID. For the Module Power 
@@ -450,6 +553,105 @@ fru_data_init( void )
 	fru_data.mcr.rec_fmt_ver = 0;	/* Record Format Version. As per AMC specification,
 					   the value 0h must be used. */
 	fru_data.mcr.curr_draw = 5;	/* Current Draw = 0.5A. In units of 0.1A at 12V */ 
+	fru_data.mcr.rec_cksum = ipmi_calculate_checksum( ( unsigned char * )&( fru_data.mcr.manuf_id_lsb ), 6 );
+	fru_data.mcr.hdr_cksum = ipmi_calculate_checksum( ( unsigned char * )&( fru_data.mcr.rec_type_id ), 4 );
+
+	// Last record
+	fru_data.last_record.record_type_id = 0xC0;	/* For all records a value of C0h (OEM) shall be used. */
+	fru_data.last_record.eol = 1;		/* End of list. Set to one for the last record */
+	fru_data.last_record.reserved = 0;
+	fru_data.last_record.version = 2;	/* record format version (2h for this definition) */
+	fru_data.last_record.record_len = 5;	/* Record Length. */
+	fru_data.last_record.manuf_id[0] = 0x5A;
+	fru_data.last_record.manuf_id[1] = 0x31;
+	fru_data.last_record.manuf_id[2] = 0x00;		
+	fru_data.last_record.picmg_rec_id = 0;	/* PICMG Record ID. */
+	fru_data.last_record.rec_fmt_ver = 0;	/* For this specification, the value 0h shall be used. */
+	fru_data.last_record.record_cksum = ipmi_calculate_checksum( ( unsigned char * )&( fru_data.last_record.manuf_id[0] ), 5 );	
+	fru_data.last_record.header_cksum = ipmi_calculate_checksum( ( unsigned char * )&( fru_data.mcr.rec_type_id ), 4 );	
+}
+
+void
+hotswap_init_sensor_record( void )
+{
+	hssr.record_id[0] = 1;
+	hssr.sdr_version = 0x51;
+	hssr.record_type = 1;	/* Record Type Number = 01h, Full Sensor Record */
+	hssr.record_len = sizeof( FULL_SENSOR_RECORD ) - 5;	/* Number of remaining record bytes following. */
+	hssr.owner_id = 0;	/* 7-bit system software ID */
+	hssr.id_type = 1;	/* System software type */
+	hssr.channel_num = 0;
+	hssr.sensor_owner_lun = 0; 
+	hssr.sensor_number = 0;	/* this will get replaced by the actual sensor number when we register the SDR */
+	hssr.entity_id = ENTITY_ID_SYSTEM_BOARD; /* physical entity the sensor is monitoring */
+
+	hssr.entity_type = 0;	/* treat entity as a physical entity */
+	hssr.entity_instance_num = 0;
+	hssr.init_scanning = 1;	/* the sensor accepts the ‘enable/disable scanning’ bit in the 
+				   Set Sensor Event Enable command). */
+	hssr.init_events = 0;
+	hssr.init_thresholds = 0;
+	hssr.init_hysteresis = 0;
+	hssr.init_sensor_type = 0;
+
+	/* Sensor Default (power up) State */
+	hssr.powerup_evt_generation = 0;	/* event generation disabled */
+	hssr.powerup_sensor_scanning = 1;	/* sensor scanning enabled */
+	hssr.ignore_sensor = 1;			/* Ignore sensor if entity is not present or disabled. */
+
+	/* Sensor Auto Re-arm Support */
+	hssr.sensor_manual_support = 1;		/* automatically rearms itself when the event clears */
+				    
+	/* Sensor Hysteresis Support */
+	hssr.sensor_hysteresis_support = 0; 	/* No hysteresis */
+					
+	/* Sensor Threshold Access Support */
+	hssr.sensor_threshold_access = 0;	/* no thresholds */
+				     
+	/* Sensor Event Message Control Support */
+	hssr.event_msg_control = 1;			/* entire sensor only (implies that global
+						   disable is also supported) */
+
+	hssr.sensor_type = ST_HOT_SWAP;		/* From Table 42-3, Sensor Type Codes */
+	hssr.event_type_code = 0;		/* unspecified */
+	hssr.event_mask = 0;
+	hssr.deassertion_event_mask = 0;
+	hssr.reading_mask = 0;
+	hssr.analog_data_format = 0;		/* unsigned */
+	hssr.rate_unit = 0;			/* none */
+	hssr.modifier_unit = 0;			/* 00b = none */
+	hssr.percentage = 0;			/* not a percentage value */
+	hssr.sensor_units2 = SENSOR_UNIT_UNSPECIFIED;	/*  Base Unit */
+	hssr.sensor_units3 = 0;		/* no modifier unit */
+	hssr.linearization = 0;		/* Linear */
+	hssr.M = 0;		
+	hssr.M_tolerance = 0;
+	hssr.B = 0;
+	hssr.B_accuracy = 0;
+	hssr.accuracy = 0;
+	hssr.R_B_exp = 0;
+	hssr.analog_characteristic_flags = 0;
+	hssr.nominal_reading;
+	hssr.normal_maximum = 0;
+	hssr.normal_minimum;
+	hssr.sensor_maximum_reading = 0xff;
+	hssr.sensor_minimum_reading = 0;
+	hssr.upper_non_recoverable_threshold = 0;
+	hssr.upper_critical_threshold = 0;
+	hssr.upper_non_critical_threshold = 0;
+	hssr.lower_non_recoverable_threshold = 0;	
+	hssr.lower_critical_threshold = 0;
+	hssr.lower_non_critical_threshold;
+	hssr.positive_going_threshold_hysteresis_value;
+	hssr.negative_going_threshold_hysteresis_value;
+	hssr.reserved2 = 0;
+	hssr.reserved3 = 0;
+	hssr.oem = 0;
+	hssr.id_string_type = 3;	/* 11 = 8-bit ASCII + Latin 1. */ 
+	hssr.id_string_length = 11; /* length of following data, in characters */
+	memcpy( hssr.id_string_bytes, "HOT SWAP Sensor", 15 ); /* Sensor ID String bytes. */
+
+	// sensor_add( &hssr, &hssd );
 }
 
 
@@ -497,10 +699,12 @@ mmc_hot_swap_state_change( unsigned char new_state )
 
 	msg_req.command = IPMI_SE_PLATFORM_EVENT;
 	msg_req.evt_msg_rev = IPMI_EVENT_MESSAGE_REVISION;
-	msg_req.sensor_type = IPMI_SENSOR_HOT_SWAP;
-	msg_req.sensor_number = 0;		/* Hot swap sensor is 0 */
+	msg_req.sensor_type = IPMI_SENSOR_MODULE_HOT_SWAP;
+	msg_req.sensor_number = 0x90;		/* Hot swap sensor is 0 */
 	msg_req.evt_direction = IPMI_EVENT_TYPE_GENERIC_AVAILABILITY;
 	msg_req.evt_data1 = new_state;	
+	msg_req.evt_data2 = 0xff;	
+	msg_req.evt_data3 = 0xff;	
 
 	// remove any previously undelivered events from the callout queue
 	timer_remove_callout_queue( (void *)&send_event_retry_timer_handle );
@@ -1115,7 +1319,7 @@ connections are described in the Module’s FRU Information.
 */
 
 void
-module_event_handler( GENERIC_EVENT_MSG *evt_msg )
+module_event_handler( IPMI_PKT *pkt )
 {
 }
 
@@ -1123,3 +1327,328 @@ void
 module_term_process( unsigned char * ptr )
 {
 }
+
+MGMT_CTRL_DEV_LOCATOR_RECORD sdr1 = {
+	{0,0},		// record_id[0-1] of this record
+	0x51,		// sdr_version;
+	0x12,		// record_type = 12h, Management Controller Locator
+	0x14,		// record_len - Number of remaining record bytes following
+	0,		// dev_slave_addr - [7:1] - 7-bit I2C Slave Address of device on channel. Fill during init.
+	1,		// ch_num - [3:0] - Channel number for the channel that the management controller is on.
+	
+	// BYTE 8
+	0,		// acpi_sys_pwr_st_notify_req - 0b = no ACPI System Power State notification required
+	0,		// acpi_dev_pwr_st_notify_req - 0b = no ACPI Device Power State notification required 
+	0,		// reserved
+	0,		// reserved
+	1,		// ctrl_logs_init_errs - 1b = Controller logs Initialization 
+	1,		// log_init_agent_errs - 1b = Log Initialization Agent errors 
+	0,		// [1:0] ctrl_init
+
+	// BYTE 9
+	0,		// dev_sup_chassis - 0b = Not a Chassis Device.
+	0,		// dev_sup_bridge - 0b = Not a Bridge 
+	1,		// dev_sup_ipmb_evt_gen - 1b = IPMB Event Generator 
+	0,		// dev_sup_ipmb_evt_rcv - 1b = IPMB Event Receiver 
+	1,		// dev_sup_fru_inv - 1b = FRU Inventory Device 
+	0,		// dev_sup_sel - 0b = Not a SEL Device 
+	1,		// dev_sup_sdr_rep - 1b = SDR Repository Device 
+	1,		// dev_sup_sensor - 1b = Sensor Device
+	
+	{ 0,0,0 },		// rsv[3] - reserved
+	0xC1,		// entity_id - C1h for all AMC device SDRs as mandated in AMC spec
+	0x68,		// entity_instance
+	0,		// oem - Reserved for OEM use
+	0xC9,		// dev_id_typ_len - ASCII | 9 bytes
+	{ 'C', 'I', ' ', 'M', 'M', 'C', ' ', '0', '1' }		// dev_id_str
+};
+
+COMPACT_SENSOR_RECORD sdr2 = {
+	{ 1,0 },		// 1,2 record_id[0-1] of this record
+	0x51,		// 3 sdr_version;
+	0x02,		// 4 record_type = Compact Sensor Record
+	0x25,		// 5 record_len - Number of remaining record bytes following
+
+	// BYTE 6
+	0,		// owner_id - 7-bit I2C Slave, fill during init
+	0,		// id_type - 0b = owner_id is IPMB Slave Address
+
+	// BYTE 7
+	0,		// channel_num
+	0,		// fru_owner_lun
+	0,		// sensor_owner_lun
+
+	0x90,		// 8 sensor number
+	0xC1,		// 9 entity_id
+
+	// BYTE 10
+	0,		// entity_type - 0b = treat entity as a physical entity
+	0x68,		// entity_instance_num - 60h-7Fh device-relative Entity Instance.
+
+	// BYTE 11 - Sensor initialization
+	0,		// [7] - reserved. Write as 0b
+	0,		// [6] init_scanning
+	0,		// [5] init_events
+	0,		// [4] - reserved. Write as 0b
+	0,		// [3] init_hysteresis
+	0,		// [2] init_sensor_type
+	1,		// [1] powerup_evt_generation
+	1,		// [0] powerup_sensor_scanning
+
+	// BYTE 12 - Sensor capabilities
+	0,		// [7] ignore_sensor
+	1,		// [6] sensor_manual_support
+	0,		// [5:4] sensor_hysteresis_support 
+	0,		// [3:2] sensor_threshold_access
+	2,		// [1:0] event_msg_control
+
+	
+	0xF2,		// 13 sensor_type = F2 - AMC MMC Module Hot Swap sensor
+	0x6F,		// 14 event_type_code
+	0x0700,		// 15,16 assertion event_mask
+
+	0x0000,		// 17,18 deassertion event mask
+	0x0700,		// 19,20 reading_mask
+	
+	// BYTE 21
+	3,		// [7:6] reserved
+	0,		// [5:3] rate_unit - 000b = none
+	0,		// [2:1] modifier_unit - 00b = none
+	0,		// [0] percentage - 0b
+
+	0,		// 22 sensor_units2
+	0,		// 23 sensor_units3
+
+	// BYTE 24
+	0,		// [7:6] sensor_direction - 00b = unspecified / not applicable
+	0,		// [5:4] id_str_mod_type - 00b = numeric
+	1,		// [3:0] share_count
+
+	// BYTE 25
+	0,		// [7] entity_inst_same - 0b = Entity Instance same for all shared records
+	0,		// [6:0] id_str_mod_offset - ID String Instance Modifier Offset
+
+	0, 		// 26 positive_hysteresis
+	0,		// 27 negative_hysteresis
+
+	0,		// 28 reserved Write as 00h
+	0,		// 29 reserved. Write as 00h
+	0,		// 30 reserved. Write as 00h
+
+	0,		// 31 oem - Reserved for OEM use
+
+	0xCA,		// 32 id_str_typ_len Sensor ID String Type/Length Code, 10 chars in str
+	{ 'A', 'M', 'C', 'H', 'O', 'T', 'S', 'W', 'A', 'P' }		// sensor_id_str[]
+};
+
+FULL_SENSOR_RECORD sdr3 = {
+	{ 2,0 },		// record_id[0-1] of this record
+	0x51,		// sdr_version;
+	0x1,		// record_type = 1 - Full sensor record
+	0x30,		// record_len - Number of remaining record bytes following
+	0,		// dev_slave_addr - [7:1] - 7-bit I2C Slave Address of device on channel. Fill during init.
+	1,		// ch_num - [3:0] - Channel number for the channel that the management controller is on.
+
+	// BYTE 6
+	0,		// owner_id - 7-bit I2C Slave, fill during init
+	0,		// id_type - 0b = owner_id is IPMB Slave Address
+
+	// BYTE 7
+	0,		// [7:4] channel_num
+	0,		// [3:2] reserved
+	0,		// [1:0] sensor_owner_lun
+
+	0x10,		// 8 sensor number
+	0xC1,		// 9 entity_id
+
+	// BYTE 10
+	0,		// entity_type - 0b = treat entity as a physical entity
+	0x68,		// entity_instance_num - 60h-7Fh device-relative Entity Instance.
+
+	// BYTE 11 - Sensor initialization
+	0,		// [7] - reserved. Write as 0b
+	0,		// [6] init_scanning
+	0,		// [5] init_events
+	0,		// [4] - reserved. Write as 0b
+	0,		// [3] init_hysteresis
+	0,		// [2] init_sensor_type
+	1,		// [1] powerup_evt_generation
+	1,		// [0] powerup_sensor_scanning
+
+	// BYTE 12 - Sensor capabilities
+	0,		// [7] ignore_sensor
+	1,		// [6] sensor_manual_support
+	3,		// [5:4] sensor_hysteresis_support 
+	2,		// [3:2] sensor_threshold_access
+	0,		// [1:0] event_msg_control
+
+	0x1,		// 13 sensor_type = 1 - Temp sensor
+	0x1,		// 14 event_type_code
+
+	0x8002,		// 15,16 assertion event_mask
+
+	0x8032,		// 17,18 deassertion event mask
+	0x3F3F,		// 19,20 reading_mask
+
+	// BYTE 21
+	2,		// [7:6] Analog (numeric) Data Format - 2’s complement (signed)
+	0,		// [5:3] rate_unit - 000b = none
+	0,		// [2:1] modifier_unit - 00b = none
+	0,		// [0] percentage - 0b
+
+	1,		// 22 sensor_units2
+	0,		// 23 sensor_units3
+
+	0,		// 24 linearization
+	1,		// 25 M 
+	0,		// 26 M Tolerance
+	0,		// 27 B
+	0,		// 28 B Accuracy 
+	0,		// 29 Accuracy, Accuracy exp, Sensor Direction
+	0,		// 30 R exp, B exp 
+	0,		// 31 Analog characteristic flags 
+	0,		// 32 Nominal Reading
+	0,		// 33 Normal Maximum - Given as a raw value.
+	0,		// 34 Normal Minimum - Given as a raw value.
+	0x7F,		// 35 Sensor Maximum Reading 
+	0xC9,		// 36 Sensor Minimum Reading
+	0x7F,		// 37 Upper non-recoverable Threshold
+	0x4B,		// 38 Upper critical Threshold 
+	0x3C,		// 39 Upper non-critical Threshold 
+	0xFB,		// 40 Lower non-recoverable Threshold
+	5,		// 41 Lower critical Threshold 
+	0xA,		// 42 Lower non-critical Threshold 
+	2,		// 43 Positive-going Threshold Hysteresis value
+	2,		// 44 Negative-going Threshold Hysteresis value
+	0,		// 45 reserved. Write as 00h.
+	0,		// 46 reserved. Write as 00h.
+	0,		// 47 OEM - Reserved for OEM use.
+
+	0xC5,		// 48 id_str_typ_len Sensor ID String Type/Length Code, 5 chars in str
+	{ 'T', 'E', 'M', 'P', '1' }		// sensor_id_str[]
+};
+
+FULL_SENSOR_RECORD sdr4 = {
+	{3,0},		// record_id[0-1] of this record
+	0x51,		// sdr_version;
+	0x1,		// record_type = 1 - Full sensor record
+	0x30,		// record_len - Number of remaining record bytes following
+	0,		// dev_slave_addr - [7:1] - 7-bit I2C Slave Address of device on channel. Fill during init.
+	1,		// ch_num - [3:0] - Channel number for the channel that the management controller is on.
+	
+	// BYTE 6
+	0,		// owner_id - 7-bit I2C Slave, fill during init
+	0,		// id_type - 0b = owner_id is IPMB Slave Address
+
+	// BYTE 7
+	0,		// [7:4] channel_num
+	0,		// [3:2] reserved
+	0,		// [1:0] sensor_owner_lun
+
+	0x11,		// 8 sensor number
+	0xC1,		// 9 entity_id
+
+	// BYTE 10
+	0,		// entity_type - 0b = treat entity as a physical entity
+	0x68,		// entity_instance_num - 60h-7Fh device-relative Entity Instance.
+
+	// BYTE 11 - Sensor initialization
+	0,		// [7] - reserved. Write as 0b
+	0,		// [6] init_scanning
+	0,		// [5] init_events
+	0,		// [4] - reserved. Write as 0b
+	0,		// [3] init_hysteresis
+	0,		// [2] init_sensor_type
+	1,		// [1] powerup_evt_generation
+	1,		// [0] powerup_sensor_scanning
+
+	// BYTE 12 - Sensor capabilities
+	0,		// [7] ignore_sensor
+	1,		// [6] sensor_manual_support
+	3,		// [5:4] sensor_hysteresis_support 
+	2,		// [3:2] sensor_threshold_access
+	0,		// [1:0] event_msg_control
+
+	0x1,		// 13 sensor_type = 1 - Temp sensor
+	0x1,		// 14 event_type_code
+
+	0x8002,		// 15,16 assertion event_mask
+
+	0x8032,		// 17,18 deassertion event mask
+	0x3F3F,		// 19,20 reading_mask
+
+	// BYTE 21
+	2,		// [7:6] Analog (numeric) Data Format - 2’s complement (signed)
+	0,		// [5:3] rate_unit - 000b = none
+	0,		// [2:1] modifier_unit - 00b = none
+	0,		// [0] percentage - 0b
+
+	1,		// 22 sensor_units2
+	0,		// 23 sensor_units3
+
+	0,		// 24 linearization
+	1,		// 25 M 
+	0,		// 26 M Tolerance
+	0,		// 27 B
+	0,		// 28 B Accuracy 
+	0,		// 29 Accuracy, Accuracy exp, Sensor Direction
+	0,		// 30 R exp, B exp 
+	0,		// 31 Analog characteristic flags 
+	0,		// 32 Nominal Reading
+	0,		// 33 Normal Maximum - Given as a raw value.
+	0,		// 34 Normal Minimum - Given as a raw value.
+	0x7F,		// 35 Sensor Maximum Reading 
+	0xC9,		// 36 Sensor Minimum Reading
+	0x7F,		// 37 Upper non-recoverable Threshold
+	0x4B,		// 38 Upper critical Threshold 
+	0x3C,		// 39 Upper non-critical Threshold 
+	0xFB,		// 40 Lower non-recoverable Threshold
+	5,		// 41 Lower critical Threshold 
+	0xA,		// 42 Lower non-critical Threshold 
+	2,		// 43 Positive-going Threshold Hysteresis value
+	2,		// 44 Negative-going Threshold Hysteresis value
+	0,		// 45 reserved. Write as 00h.
+	0,		// 46 reserved. Write as 00h.
+	0,		// 47 OEM - Reserved for OEM use.
+
+	0xC5,		// 48 id_str_typ_len Sensor ID String Type/Length Code, 5 chars in str
+	{ 'T', 'E', 'M', 'P', '2' }		// sensor_id_str[]
+};
+
+
+void
+module_sensor_init( void )
+{
+	unsigned char dev_slave_addr =  module_get_i2c_address( I2C_ADDRESS_LOCAL );;
+	
+	sdr1.dev_slave_addr = dev_slave_addr;
+	sdr_entry_table[0].record_ptr = (unsigned char *)&sdr1;
+	sdr_entry_table[0].rec_len = 25;
+	sdr_entry_table[0].record_id = current_sensor_count;
+	current_sensor_count = 1;
+
+	sdr2.owner_id = dev_slave_addr;
+	sdr_entry_table[1].record_ptr = (unsigned char *)&sdr2;
+	sdr_entry_table[1].rec_len = 42;
+	sdr_entry_table[1].record_id = current_sensor_count;
+	current_sensor_count = 2;
+
+	sdr3.owner_id = dev_slave_addr;
+	sdr_entry_table[2].record_ptr = (unsigned char *)&sdr3;
+	sdr_entry_table[2].rec_len = 53;
+	sdr_entry_table[2].record_id = current_sensor_count;
+	current_sensor_count = 3;
+
+	sdr3.owner_id = dev_slave_addr;
+	sdr_entry_table[3].record_ptr = (unsigned char *)&sdr4;
+	sdr_entry_table[3].rec_len = 53;
+	sdr_entry_table[3].record_id = current_sensor_count;
+	current_sensor_count = 4;
+
+		// TODO fix i2c_addr in lm75_init()
+//	lm75_init_sensor_record();
+//	lm75_init( 1, 0x20 );
+
+
+}
+

@@ -31,26 +31,36 @@ support and contact details.
 #include "event.h"
 #include "sensor.h"
 
-/* TODO Add i2c tem & hot swap sensors 
- * Add scan functions */
+#define MAX_SDR_COUNT		8
+#define MAX_SENSOR_COUNT	8
 
-/* we currently have a sample A/D sensor */
-#define SDR_COUNT 	1 /*  This is the total number of SDRs in the device. */
-#define SENSOR_COUNT	1
+// in this implementation: number of sensors == number of SDRs
+unsigned char current_sensor_count = 0;
 
-typedef struct sdr {
-	int sensor_count;
-} SDR;
+SDR_ENTRY sdr_entry_table[MAX_SDR_COUNT];
 
-typedef struct sdr_entry {
-	unsigned short	record_id;
-	uchar	*record_ptr;
-} SDR_ENTRY;
-
-SDR_ENTRY sdr_entry_table[SDR_COUNT];
-SDR sdr[4];
 unsigned sdr_reservation_id = 0;
-SENSOR_DATA sensor[SENSOR_COUNT];
+SENSOR_DATA *sensor[MAX_SENSOR_COUNT];
+
+/*======================================================================*/
+int
+sensor_add(
+	FULL_SENSOR_RECORD *sdr, 
+	SENSOR_DATA *sensor_data ) 
+{
+	if( current_sensor_count + 1 > MAX_SENSOR_COUNT )
+		return( -1 );
+	
+	sdr_entry_table[current_sensor_count].record_ptr = ( uchar * )sdr;
+	((FULL_SENSOR_RECORD *)(sdr_entry_table[current_sensor_count].record_ptr))->sensor_number = current_sensor_count;
+	((FULL_SENSOR_RECORD *)(sdr_entry_table[current_sensor_count].record_ptr))->record_id[0] = current_sensor_count;
+	sensor[current_sensor_count] = sensor_data;
+	current_sensor_count++;
+
+	return( 0 );
+}
+
+
 
 /*======================================================================*/
 /*
@@ -80,9 +90,12 @@ ipmi_get_device_sdr_info( IPMI_PKT *pkt )
 		 0b = Get Sensor count. This returns the number of sensors
 		      implemented on LUN this command was addressed to */
 	if( req->operation & 0x01 ) {
-		resp->num = SDR_COUNT;
+		resp->num = current_sensor_count;
 	} else {
-		resp->num = sdr[lun].sensor_count;
+		if( lun == 0 )
+			resp->num = current_sensor_count;
+		else
+			resp->num = 0;
 	}
 
 	/* Flags:
@@ -146,7 +159,7 @@ ipmi_get_device_sdr( IPMI_PKT *pkt )
 	}
 	/* check if we have a valid record ID */	
 	record_id = req->record_id_msb << 8 | req->record_id_lsb;
-	for( i = 0; i < SDR_COUNT; i++ ) {
+	for( i = 0; i < current_sensor_count; i++ ) {
 		if( sdr_entry_table[i].record_id == record_id ) {
 			found++;
 			break;
@@ -157,20 +170,23 @@ ipmi_get_device_sdr( IPMI_PKT *pkt )
 	if( found ) {
 
 		/* fill in the Record ID for next record */
-		if( i+1 < SDR_COUNT ) {
+		if( i + 1 < current_sensor_count ) {
 			resp->rec_id_next_lsb = sdr_entry_table[i+1].record_id & 0xf;
 			resp->rec_id_next_msb = sdr_entry_table[i+1].record_id >> 8;
 		} else {
-			resp->rec_id_next_lsb = 0;
-			resp->rec_id_next_msb = 0;
+			resp->rec_id_next_lsb = 0xff;
+			resp->rec_id_next_msb = 0xff;
 		}
 
 		/* SDR Data goes in here */
 		/* check req->bytes_to_read. FFh means read entire record. */
-		if( req->bytes_to_read > MAX_SDR_BYTES ) 
-			memcpy( resp->req_bytes, sdr_entry_table[i].record_ptr, MAX_SDR_BYTES ); 
-       		else 
-			memcpy( resp->req_bytes, sdr_entry_table[i].record_ptr, req->bytes_to_read );
+		if( req->bytes_to_read + req->offset > sdr_entry_table[i].rec_len ) {
+			memcpy( resp->req_bytes, sdr_entry_table[i].record_ptr + req->offset, sdr_entry_table[i].rec_len - req->offset);
+	       		pkt->hdr.resp_data_len = sdr_entry_table[i].rec_len - req->offset + 2;
+		} else {
+			memcpy( resp->req_bytes, sdr_entry_table[i].record_ptr + req->offset, req->bytes_to_read );
+	       		pkt->hdr.resp_data_len = req->bytes_to_read + 2;
+		}
 		
 		/* TODO return a 80h = record changed status if any of the record contents
 		have been altered since the last time the Requester issued the request 
@@ -225,8 +241,8 @@ ipmi_get_sensor_reading( IPMI_PKT *pkt )
 	int i, found = 0;
 	
 	/* Given the req->sensor_number return the reading */
-	for( i = 0; i < SENSOR_COUNT; i++ ) {
-		if( sensor[i].sensor_id == req->sensor_number ) {
+	for( i = 0; i < current_sensor_count; i++ ) {
+		if( sensor[i]->sensor_id == req->sensor_number ) {
 			found++;
 			break;
 		}
@@ -234,16 +250,16 @@ ipmi_get_sensor_reading( IPMI_PKT *pkt )
 
 	/* if this is a non-periodically scanned sensor, call the sensor scan 
 	 * function to update the sensor reading*/
-	if( found && !sensor[i].scan_period )
-		sensor[i].scan_function((void *)&sensor[i]);
+	if( found && !sensor[i]->scan_period )
+		sensor[i]->scan_function((void *)&sensor[i]);
 	
 	if( found ) {
 		resp->completion_code = CC_NORMAL;
-		resp->sensor_reading = sensor[i].last_sensor_reading;
-		resp->event_messages_enabled = sensor[i].event_messages_enabled;
-		resp->sensor_scanning_enabled = sensor[i].sensor_scanning_enabled;
-		resp->unavailable =  sensor[i].unavailable;
-       		pkt->hdr.resp_data_len = 2;
+		resp->sensor_reading = sensor[i]->last_sensor_reading;
+		resp->event_messages_enabled = sensor[i]->event_messages_enabled;
+		resp->sensor_scanning_enabled = sensor[i]->sensor_scanning_enabled;
+		resp->unavailable =  sensor[i]->unavailable;
+		pkt->hdr.resp_data_len = 2;
 	} else {
 		resp->completion_code = CC_REQ_DATA_NOT_AVAIL;
        		pkt->hdr.resp_data_len = 0;
@@ -491,18 +507,18 @@ get_sdr( IPMI_PKT *pkt )
 
 	/* if there is an incremental read to an offset other than 0000h
 	 * the requestor should have reserved the SDR Repository */
-	req->reservation_id_lsb; 
-	req->reservation_id_msb;
-	req->record_id_lsb;	/* Record ID of record to Get, LS Byte */
-	req->record_id_msb;	/* Record ID of record to Get, MS Byte */
-	req->offset;		/* Offset into record */
-	req->bytes_to_read;	/* Bytes to read. FFh means read entire record. */
+//	req->reservation_id_lsb; 
+//	req->reservation_id_msb;
+//	req->record_id_lsb;	/* Record ID of record to Get, LS Byte */
+//	req->record_id_msb;	/* Record ID of record to Get, MS Byte */
+//	req->offset;		/* Offset into record */
+//	req->bytes_to_read;	/* Bytes to read. FFh means read entire record. */
 
 
-	resp->completion_code;
-	resp->record_id_next_lsb;	/* Record ID for next record, LS Byte */
-	resp->record_id_next_msb;	/* Record ID for next record, MS Byte */
-	resp->record_data[20];	/* 4:3+N Record Data */
+//	resp->completion_code;
+//	resp->record_id_next_lsb;	/* Record ID for next record, LS Byte */
+//	resp->record_id_next_msb;	/* Record ID for next record, MS Byte */
+//	resp->record_data[20];	/* 4:3+N Record Data */
 	
 }
 
