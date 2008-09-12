@@ -57,8 +57,8 @@ adc_ch0_read( SENSOR_DATA *sensor )
 void
 adc_init_sensor_record( void )
 {
-	adsr.record_id = 1;
-	adsr.version = 0x51;
+	adsr.record_id[0] = 1;
+	adsr.sdr_version = 0x51;
 	adsr.record_type = 1;	/* Record Type Number = 01h, Full Sensor Record */
 	adsr.record_len = 0;	/* Number of remaining record bytes following. */
 	adsr.owner_id = 0;	/* 7-bit system software ID */
@@ -92,7 +92,7 @@ adc_init_sensor_record( void )
 	adsr.sensor_threshold_access = 0;	/* no thresholds */
 				     
 	/* Sensor Event Message Control Support */
-	adsr.event_enable = 1;			/* entire sensor only (implies that global
+	adsr.event_msg_control = 1;			/* entire sensor only (implies that global
 						   disable is also supported) */
 
 	adsr.sensor_type = ST_VOLTAGE;		/* From Table 42-3, Sensor Type Codes */

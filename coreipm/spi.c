@@ -247,7 +247,7 @@ void SPI_ISR_0( void )
 #endif
 {
 	unsigned char data_in, error = 0;
-	unsigned spin_count;
+	unsigned spin_count = 0;
 	unsigned char status;
 	
 	/* In slave mode, how we respond is dependent on what the master 

@@ -47,9 +47,9 @@ struct {
 
 uchar pef_postpone_timer_handle;
 
-void ipmi_event_handler( GENERIC_EVENT_MSG *evt_msg );
+void ipmi_event_handler( IPMI_PKT *pkt );
 void ipmi_event_init( void );
-void pef_postpone_timer_expired( void );
+void pef_postpone_timer_expired( unsigned char *arg );
 
 /*======================================================================*/
 /*======================================================================*/
@@ -291,7 +291,7 @@ ipmi_arm_pef_postpone_timer( IPMI_PKT *pkt )
 				timer_get_expiration_time( &pef_postpone_timer_handle );
 			break;
 		default:		/* 01h - FDh = arm timer */
-			timer_add_callout_queue( &pef_postpone_timer_handle, 
+			timer_add_callout_queue( ( void * )&pef_postpone_timer_handle, 
 					pef_capabilities.pef_postpone_timeout_value * HZ, 
 					pef_postpone_timer_expired,
 					0 );
@@ -302,13 +302,13 @@ ipmi_arm_pef_postpone_timer( IPMI_PKT *pkt )
 }
 
 void
-pef_postpone_timer_expired( void )
+pef_postpone_timer_expired( unsigned char *arg )
 {
 	GENERIC_EVENT_MSG *evt_msg;
 	
 	evt_msg = PEF_PENDING_EVENT;
 	
-	ipmi_event_handler( evt_msg );
+//	ipmi_event_handler( evt_msg );	   TODO fix
 }
 
 
@@ -538,12 +538,16 @@ ipmi_platform_event( IPMI_PKT *pkt )
 	// check if PEF postpone is in effect 
 	
 	// call event handler 
-	ipmi_event_handler( ( GENERIC_EVENT_MSG * )&( req->EvMRev ) );
+	ipmi_event_handler( pkt );
+
 }
 
 void
-ipmi_event_handler( GENERIC_EVENT_MSG *evt_msg )
+ipmi_event_handler( IPMI_PKT *pkt )
 {
+	PLATFORM_EVENT_MESSAGE_CMD_REQ	*req = ( PLATFORM_EVENT_MESSAGE_CMD_REQ * )pkt->req;
+	GENERIC_EVENT_MSG *evt_msg = ( GENERIC_EVENT_MSG * )&( req->EvMRev );
+	
 	int action[PEF_EVT_FILTER_TABLE_ENTRIES];
 	unsigned char action_sum = 0;
 	int i;
@@ -573,7 +577,7 @@ ipmi_event_handler( GENERIC_EVENT_MSG *evt_msg )
 	}
 
 	/* Now handle the alerts if any */
-	module_event_handler( evt_msg );
+	module_event_handler( pkt );
 }
 
 	
@@ -669,6 +673,8 @@ ipmi_set_event_receiver( IPMI_PKT *pkt )
 	}
 	
 	resp->completion_code = CC_NORMAL;
+
+	module_rearm_events();
 	
 	dputstr( DBG_IPMI | DBG_INOUT, "ipmi_set_event_receiver: egress\n" );
 }

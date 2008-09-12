@@ -1,6 +1,6 @@
 /*
 -------------------------------------------------------------------------------
-coreIPM/mmcio.h
+coreIPM/a3803io.h
 
 Author: Gokhan Sozmen
 -------------------------------------------------------------------------------
@@ -42,6 +42,7 @@ support and contact details.
 // NON-INTERRUPT, SWITCH INPUTS
 // ----------------------------
 #define HOT_SWAP_HANDLE		P1_22
+#define EINT_HOT_SWAP_HANDLE  P1_22
 
 // SPI
 // ---
@@ -118,5 +119,5 @@ support and contact details.
 */
 
 // POWER MONITORING - GPIO IN
-#define POWER_FAIL	P0.25	//  9
+#define POWER_FAIL	P0_25	//  9
 

@@ -38,6 +38,7 @@ support and contact details.
 #define POWER_STATE_S4		7
 
 #define IPMI_SENSOR_HOT_SWAP	0xf0	
+#define IPMI_SENSOR_MODULE_HOT_SWAP	0xf2	
 #define IPMI_EVENT_TYPE_GENERIC_AVAILABILITY	0x6f
 
 /*======================================================================*/
@@ -335,7 +336,7 @@ typedef struct ipmi_pkt {
 	IPMI_CMD_RESP	*resp;
 } IPMI_PKT;
 
-#define WS_ARRAY_SIZE	8
+//#define WS_ARRAY_SIZE	8
 #define WS_BUF_LEN 32
 
 typedef struct list_hdr {
@@ -360,6 +361,7 @@ typedef struct ipmi_ws {
 	unsigned char outgoing_protocol;
 	unsigned char incoming_medium;
 	unsigned char outgoing_medium;
+	unsigned char interface;
 	unsigned char seq_out;		/* sequence number */
 	unsigned char delivery_attempts;
 	void *bridged_ws;		/* the ws we're bridging */
@@ -888,7 +890,7 @@ Broadcast “Get Device ID” 	App 	01h 	O/M 	M 	M
 /*----------------------------------------------------------------------*/
 
 #define	IPMI_CMD_GET_DEVICE_ID	0x01
-
+#define APP_CMD_GET_DEVICE_ID	0x0601
 /*
  * Flags for "Additional Device Support" field in  Get Device ID Command - response data
  * (formerly called IPM Device Support). Lists the IPMI ‘logical device’ commands and
@@ -2685,6 +2687,8 @@ typedef struct events_processed {
 #define IPMI_SE_CMD_SET_SENSOR_TYPE		0x2E	/* Set Sensor Type */
 #define IPMI_SE_CMD_GET_SENSOR_TYPE		0x2F	/* Get Sensor Type */
 
+#define EVENT_CMD_GET_DEVICE_SDR_INFO		0x0420
+#define EVENT_CMD_GET_DEVICE_SDR		0x0421
 /*----------------------------------------------------------------------*/
 /*			Get Device SDR Info command			*/
 /*----------------------------------------------------------------------*/
@@ -2729,7 +2733,7 @@ typedef struct get_device_sdr_info_resp {
 		:3,
 		flags:1;
 #endif
-	uchar sensor_population_change_indicator[4];	
+//	uchar sensor_population_change_indicator[4];	
 				/* 4:7 Sensor Population Change Indicator. 
 				   LS byte first.
 				   Four byte timestamp, or counter. Updated or
@@ -3105,6 +3109,35 @@ typedef struct fru_common_header {
 	uchar	checksum;		/* Common Header Checksum (zero checksum) */
 } FRU_COMMON_HEADER;
 
+
+typedef struct multirecord_area_header {
+	uchar	record_type_id;	/* Record Type ID. For all records defined
+				   in this specification a value of C0h (OEM)
+				   shall be used. */
+#ifdef BF_MS_FIRST
+	uchar 	eol:1,		/* [7:7] End of list. Set to one for the last record */
+	      	reserved:3,	/* [6:4] Reserved, write as 0h.*/
+		version:4;	/* [3:0] record format version (2h for this definition) */
+#else
+	uchar	version:4,
+		reserved:3,
+		eol:1;
+#endif
+	uchar	record_len;	/* Record Length. */
+	uchar	record_cksum;	/* Record Checksum. Holds the zero checksum of
+				   the record. */
+	uchar	header_cksum;	/* Header Checksum. Holds the zero checksum of 
+				   the header. */
+	uchar	manuf_id[3];	/* Manufacturer ID. LS Byte first. Write as the
+				   three byte ID assigned to PICMG®. For this
+				   specification, the value 12634 (00315Ah) shall
+				   be used. */
+	uchar	picmg_rec_id;	/* PICMG Record ID. */
+	uchar	rec_fmt_ver;	/* Record Format Version. For this specification,
+				   the value 0h shall be used. */
+} MULTIRECORD_AREA_HEADER;
+
+	
 typedef struct fru_internal_use_area {
 #ifdef BF_MS_FIRST
 	uchar	:4,			/* Internal Use Format Version
@@ -3256,6 +3289,10 @@ Board Info area. Either or both fields may be ‘null’.
 #define IPMI_STO_CMD_GET_FRU_INVENTORY_AREA_INFO 0x10	/* Get FRU Inventory Area Info */
 #define IPMI_STO_CMD_READ_FRU_DATA		0x11	/* Read FRU Data */
 #define IPMI_STO_CMD_WRITE_FRU_DATA		0x12	/* Write FRU Data */
+
+/* Combined "Netfn | Cmd" defines */
+#define NVSTORE_CMD_GET_FRU_INVENTORY_AREA_INFO	0x0A10
+#define NVSTORE_CMD_IPMI_STO_CMD_READ_FRU_DATA	0x0A11
 
 /*----------------------------------------------------------------------*/
 /*			Get FRU Inventory Area Info command		*/
@@ -4176,6 +4213,9 @@ in this range (F0h and F1h) to the hot swap and IPMB-0 sensors, respectively.
 #define ST_HOT_SWAP				0xF0
 #define ST_IPMB_0				0xF1
 
+/* AMC MMC Module Hot Swap sensor. */
+#define ST_MODULE_HOT_SWAP			0xF2
+
 /* Hot swap events */
 #define MODULE_HANDLE_CLOSED		0 // Module Handle Closed
 #define MODULE_HANDLE_OPENED		1 // Module Handle Opened
@@ -4198,11 +4238,11 @@ in this range (F0h and F1h) to the hot swap and IPMB-0 sensors, respectively.
 
 typedef struct full_sensor_record {
 	/* SENSOR RECORD HEADER */
-	short record_id;	/* 1:2 Record ID - The Record ID is used by 
+	uchar record_id[2];	/* 1:2 Record ID - The Record ID is used by 
 				   the Sensor Data Repository device for record
 				   organization and access. It is not related 
 				   to the sensor ID. */
-	uchar version;		/* 3 SDR Version - Version of the Sensor Model
+	uchar sdr_version;	/* 3 SDR Version - Version of the Sensor Model
 				   specification that this record is compatible 
 				   with. 51h for this specification. BCD 
 				   encoded with bits 7:4 holding the Least 
@@ -4232,14 +4272,14 @@ typedef struct full_sensor_record {
 				   than the primary IPMB. (Note: In IPMI v1.5 
 				   the ordering of bits 7:2 of this byte have
 				   changed to support the 4-bit channel number.) */
-		:2,		/* [3:2] - reserved */
+		rsv1:2,		/* [3:2] - reserved */
 		sensor_owner_lun:2; /* [1:0] - Sensor Owner LUN. LUN in the Sensor
 				   Owner that is used to send/receive IPMB 
 				   messages to access the sensor. 00b if system
 				   software is Sensor Owner. */
 #else
 	uchar	sensor_owner_lun:2,
-		:2,
+		rsv1:2,
 		channel_num:4;
 #endif
 	uchar sensor_number;	/* 8 Sensor Number - Unique number identifying
@@ -4278,7 +4318,7 @@ typedef struct full_sensor_record {
 		entity_type:1;
 #endif
 #ifdef BF_MS_FIRST
-	uchar	:1,		/* 11 Sensor Initialization - [7] - reserved. Write as 0b. */
+	uchar	rsv2:1,		/* 11 Sensor Initialization - [7] - reserved. Write as 0b. */
 		init_scanning:1,	/* [6] - Init Scanning 1b = enable scanning 
 				   (this bit=1 implies that the sensor accepts
 				   the ‘enable/disable scanning’ bit in the 
@@ -4315,7 +4355,7 @@ typedef struct full_sensor_record {
 		init_thresholds:1,
 		init_events:1,
 		init_scanning:1,
-		:1;
+		rsv2:1;
 #endif
 #ifdef BF_MS_FIRST
 	uchar	ignore_sensor:1,	/* 12 Sensor Capabilities - [7] 
@@ -4361,7 +4401,7 @@ typedef struct full_sensor_record {
 		   ------------------------------------ 
 		   Indicates whether this sensor generates Event Messages, and 
 		   if so, what type of Event Message control is offered. */
-		event_enable:2;	/* [1:0] - 
+		event_msg_control:2;	/* [1:0] - 
 				   00b = per threshold/discrete-state event 
 				   enable/disable control (implies that entire
 				   sensor and global disable are also supported)
@@ -4370,7 +4410,7 @@ typedef struct full_sensor_record {
 				   10b = global disable only
 				   11b = no events from sensor */
 #else
-	uchar	event_enable:2,
+	uchar	event_msg_control:2,
 		sensor_threshold_access:2,
 		sensor_hysteresis_support:2,
 		sensor_manual_support:1,
@@ -4382,7 +4422,7 @@ typedef struct full_sensor_record {
 	uchar event_type_code;	/* 14 Event / Reading Type Code - Event/Reading 
 				   Type Code. From Table 42-1, Event/Reading
 				   Type Code Ranges. */
-	short event_mask;	/* 15 & 16 Assertion Event Mask / Lower
+	unsigned short event_mask;	/* 15 & 16 Assertion Event Mask / Lower
 				   Threshold Reading Mask - This field reports
 				   the assertion event generation or threshold 
 				   event generation capabilities for a discrete
@@ -4446,7 +4486,7 @@ typedef struct full_sensor_record {
 
 	/* Deassertion Event Mask / Upper Threshold Reading Mask
 	   ----------------------------------------------------- */
-	short deassertion_event_mask;	/* 17 & 18 - Deassertion Event Mask 
+	unsigned short deassertion_event_mask;	/* 17 & 18 - Deassertion Event Mask 
 					   (for non- threshold-based sensors)
 	The Event Mask bytes are a bit mask that specifies support for 15 successive
 	events starting with the event specified by Event/Reading Type Code. LS byte
@@ -4478,7 +4518,7 @@ typedef struct full_sensor_record {
 
 	/* Discrete Reading Mask / Settable Threshold Mask, Readable Threshold Mask 
 	   ------------------------------------------------------------------------ */
-	short reading_mask;	/* 19 & 20 - Reading Mask (for non- threshold 
+	unsigned short reading_mask;	/* 19 & 20 - Reading Mask (for non- threshold 
 				   based sensors). Indicates what discrete 
 	readings can be returned by this sensor, or, for threshold based 
 	sensors, this indicates which thresholds are settable and which are
@@ -4700,13 +4740,13 @@ typedef struct full_sensor_record {
 				   length (number of data bytes) will be >1 if
 				   data is present, 0 if data is not present.
 				   A length of 1 is reserved. */
-		:1,		/* [5] reserved. */
+		rsv3:1,		/* [5] reserved. */
 		id_string_length:5; /* [4:0] length of following data, in characters.
 				   00000b indicates ‘none following’. 
 				   11111b = reserved. */
 #else
 	uchar	id_string_length:5,
-		:1,
+		rsv3:1,
 		id_string_type:2;
 #endif
 	uchar id_string_bytes[16];
@@ -4717,6 +4757,541 @@ typedef struct full_sensor_record {
 				   Bytes beyond the ID string bytes are 
 				   unspecified and should be ignored. */
 } FULL_SENSOR_RECORD;
+
+// Table 43-2, Compact Sensor Record - SDR Type 02h
+
+typedef struct compact_sensor_record {
+	 // SENSOR RECORD HEADER
+ 	uchar	record_id[2];	/* The Record ID is used by the Sensor Data Repository 
+				   device for record organization and access. This may 
+				   not actually be stored, but may be calculated when 
+				   records are accessed.  It is not related to the sensor ID. */
+	uchar	sdr_version;	/* SDR Version. Version of the Sensor Model specification
+				   that this record is compatible with. 51h for this 
+				   specification. This is BCD encoded with bits 7:4 holding
+				   the Least Significant digit of the revision and 
+				   bits 3:0 holding the Most Significant bits. E.g. 51h
+				   corresponds to “1.5”. */
+	uchar	record_type;	/* Record Type Number = 02h, Compact Sensor Record */
+	uchar	record_len;	/* Record Length. Number of remaining record bytes following. */
+
+	// RECORD KEY BYTES
+#ifdef BF_MS_FIRST
+	uchar	owner_id:7,	/* 6 Sensor Owner ID - [7:1] - 7-bit I2C Slave
+				   Address, or 7-bit system software ID */
+		id_type:1;	/* [0] - 0b = ID is IPMB Slave Address, 
+				   1b = system software ID */
+#else
+	uchar	id_type:1,
+		owner_id:7;
+#endif
+#ifdef BF_MS_FIRST
+	uchar	channel_num:4,	/* 7 Sensor Owner LUN - 
+				   [7:4] - Channel Number. The Channel Number
+				   can be, used to specify access to sensors that
+				   are located on management controllers that 
+				   are connected to the BMC via channels other
+				   than the primary IPMB. (Note: In IPMI v1.5 
+				   the ordering of bits 7:2 of this byte have
+				   changed to support the 4-bit channel number.) */
+		fru_owner_lun:2,/* [3:2] - FRU Inventory Device Owner LUN. LUN
+				   for Write/Read FRU commands to access FRU
+				   information. 00b otherwise. */
+		sensor_owner_lun:2; /* [1:0] - Sensor Owner LUN. LUN in the Sensor
+				   Owner that is used to send/receive IPMB 
+				   messages to access the sensor. 00b if system
+				   software is Sensor Owner. */
+#else
+	uchar	sensor_owner_lun:2,
+		fru_owner_lun:2,
+		channel_num:4;
+#endif
+	uchar	sensor_number;	/* Sensor Number - Unique number identifying 
+				   the sensor behind the given slave address 
+				   and LUN. Code FFh reserved. */
+	// RECORD BODY BYTES
+	uchar entity_id;	/* 9 Entity ID - Indicates the physical entity
+				   that the sensor is monitoring or is otherwise
+				   associated with the sensor. See Table 43-13,
+				   Entity ID Codes. */
+#ifdef BF_MS_FIRST
+	uchar	entity_type:1,	/* 10 Entity Instance - 
+				   [7] - 0b = treat entity as a physical entity
+				   per Entity ID table (ENTITY_TYPE_PHYSICAL)
+				   1b = treat entity as a logical container entity. 
+				   For example, if this bit is set, and the Entity 
+				   ID is ‘Processor’, the container entity would
+				   be considered to represent a logical 
+				   ‘Processor Group’ rather than a physical 
+				   processor. This bit is typically used in 
+				   conjunction with an Entity Association record.
+				   (ENTITY_TYPE_LOGICAL) */
+		entity_instance_num:7; /* [6:0] - Instance number for entity. 
+				   (See section 39.1, System- and Device-relative
+				   Entity Instance Values for more information)
+				   00h-5Fh system-relative Entity Instance. 
+				   The Entity Instance number must be unique 
+				   for each different entity of the same type 
+				   Entity ID in the system.
+				   60h-7Fh device-relative Entity Instance.
+				   The Entity Instance number must only be 
+				   unique relative to the management controller
+				   providing access to the Entity. */
+#else
+	uchar	entity_instance_num:7,
+		entity_type:1;
+#endif
+
+#ifdef BF_MS_FIRST
+	uchar	rsv1:1,		/* 11 Sensor Initialization - [7] - reserved. Write as 0b. */
+		init_scanning:1,	/* [6] - Init Scanning 1b = enable scanning 
+				   (this bit=1 implies that the sensor accepts
+				   the ‘enable/disable scanning’ bit in the 
+				   Set Sensor Event Enable command). */
+		init_events:1,	/* [5] - Init Events 1b = enable events (per 
+				   Sensor Event Message Control Support bits
+				   in Sensor Capabilities field, and per the
+				   Event Mask fields, below). */
+		rsv2:1,		/* [4] - reserved. Write as 0b. */
+		init_hysteresis:1, /* [3] - Init Hysteresis 1b = initialize sensor
+				   hysteresis (per Sensor Hysteresis Support
+				   bits in the Sensor Capabilities field, below). */
+		init_sensor_type:1, /* [2] - Init Sensor Type 1b = initialize 
+				   Sensor Type and Event / Reading Type code. */
+
+		/* Sensor Default (power up) State 
+		   -------------------------------
+		   Reports how this sensor comes up on device power
+		   up and hardware/cold reset.
+		   The Initialization Agent does not use this
+		   bit. This bit solely reports to software
+		   how the sensor comes prior to being 
+		   initialized by the Initialization Agent. */
+		powerup_evt_generation:1, /* [1] - 0b = event generation disabled,
+					     1b = event generation enabled */
+		powerup_sensor_scanning:1; /* [0] - 0b = sensor scanning disabled,
+					     1b = sensor scanning enabled */
+#else
+	uchar	powerup_sensor_scanning:1,
+		powerup_evt_generation:1,
+		init_sensor_type:1,
+		init_hysteresis:1,
+		rsv2:1,
+		init_events:1,
+		init_scanning:1,
+		rsv1:1;
+#endif
+#ifdef BF_MS_FIRST
+	uchar	ignore_sensor:1,	/* 12 Sensor Capabilities - [7] 
+				   1b = Ignore sensor if Entity is not present 
+				   or disabled.
+				   0b = don’t ignore sensor */
+		/* Sensor Auto Re-arm Support
+		   --------------------------
+		   Indicates whether the sensor requires manual rearming, or 
+		   automatically rearms itself when the event clears. ‘manual’
+		   implies that the get sensor event status and rearm sensor
+		   events commands are supported */
+		sensor_manual_support:1,	/* [6] - 0b = no (manual), 1b = yes (auto) */
+				    
+		/* Sensor Hysteresis Support
+		   ------------------------- */
+		sensor_hysteresis_support:2, /* [5:4] 
+					00b = No hysteresis, or hysteresis built-in
+				       	      but not specified.
+					01b = hysteresis is readable.
+					10b = hysteresis is readable and settable.
+					11b = Fixed, unreadable, hysteresis. 
+					      Hysteresis fields values implemented
+					      in the sensor. */
+					
+		/* Sensor Threshold Access Support
+		   ------------------------------- */
+		sensor_threshold_access:2,	/* [3:2]
+					00b = no thresholds.
+					01b = thresholds are readable, per Reading
+				              Mask, below.
+					10b = thresholds are readable and settable
+				              per Reading Mask and Settable Threshold 
+					      Mask, respectively.
+					11b = Fixed, unreadable, thresholds. Which
+				              thresholds are supported is
+					      reflected by the Reading Mask. The
+					      threshold value fields report the
+					      values that are ‘hard-coded’ in the
+					      sensor. */
+				     
+		/* Sensor Event Message Control Support
+		   ------------------------------------ 
+		   Indicates whether this sensor generates Event Messages, and 
+		   if so, what type of Event Message control is offered. */
+		event_msg_control:2;	/* [1:0] - 
+				   00b = per threshold/discrete-state event 
+				   enable/disable control (implies that entire
+				   sensor and global disable are also supported)
+				   01b = entire sensor only (implies that global
+				   disable is also supported)
+				   10b = global disable only
+				   11b = no events from sensor */
+#else
+	uchar	event_msg_control:2,
+		sensor_threshold_access:2,
+		sensor_hysteresis_support:2,
+		sensor_manual_support:1,
+		ignore_sensor:1;
+#endif
+
+	uchar sensor_type;	/* 13 Sensor Type - Code representing the sensor 
+				   type. From Table 42-3, Sensor Type Codes.
+				   E.g. Temperature, Voltage, Processor, etc. */
+	uchar event_type_code;	/* 14 Event / Reading Type Code - Event/Reading 
+				   Type Code. From Table 42-1, Event/Reading
+				   Type Code Ranges. */
+	short event_mask;	/* 15 & 16 Assertion Event Mask / Lower
+				   Threshold Reading Mask - This field reports
+				   the assertion event generation or threshold 
+				   event generation capabilities for a discrete
+				   or threshold-based sensor, respectively. 
+				   This field is also used by the init agent to
+				   enable assertion event generation when the ‘Init
+				   Events’ bit in the Sensor Capabilities field 
+				   is set and the Sensor Event Message Control
+				   Support field indicates that the sensor has 
+				   ‘per threshold/discrete state’ event enable
+				   control. */
+	/* Assertion Event Mask (for non- threshold-based sensors)
+	   -------------------------------------------------------
+	   The Event Mask bytes are a bit mask that specifies support for 15 successive
+	   events starting with the event specified by Event/Reading Type Code. LS byte
+	   first. 
+	   [15] - reserved. Write as ‘0’.
+	   [14:0] - Event offsets 14 through 0, respectively.
+	   1b = assertion event can be generated by this sensor
+	   Lower Threshold Reading Mask (for threshold-based sensors)
+	   Indicates which lower threshold comparison status is returned via the Get Sensor
+	   Reading command.
+	   [15] - reserved. Write as 0b
+	   [14] - 1b = Lower non-recoverable threshold comparison is returned
+	   [13] - 1b = Lower critical threshold is comparison returned
+	   [12] - 1b = Lower non-critical threshold is comparison returned
+	   Threshold Assertion Event Mask (for threshold-based sensors)
+	   [11] - 1b = assertion event for upper non-recoverable going high supported
+	   [10] - 1b = assertion event for upper non-recoverable going low supported
+	   [9] - 1b = assertion event for upper critical going high supported
+	   [8] - 1b = assertion event for upper critical going low supported
+	   [7] - 1b = assertion event for upper non-critical going high supported
+	   [6] - 1b = assertion event for upper non-critical going low supported
+	   [5] - 1b = assertion event for lower non-recoverable going high supported
+	   [4] - 1b = assertion event for lower non-recoverable going low supported
+	   [3] - 1b = assertion event for lower critical going high supported
+	   [2] - 1b = assertion event for lower critical going low supported
+	   [1] - 1b = assertion event for lower non-critical going high supported
+	   [0] - 1b = assertion event for lower non-critical going low supported */
+	/* Deassertion Event Mask / Upper Threshold Reading Mask
+	   ----------------------------------------------------- */
+	short deassertion_event_mask;	/* 17 & 18 - Deassertion Event Mask 
+					   (for non- threshold-based sensors)
+	The Event Mask bytes are a bit mask that specifies support for 15 successive
+	events starting with the event specified by Event/Reading Type Code. LS byte
+	first.
+	[15] - reserved. Write as 0b
+	[14:0] - Event offsets 14 through 0, respectively.
+	1b = assertion event can be generated for this state.
+	Upper Threshold Reading Mask (for threshold-based sensors)
+	Indicates which upper threshold comparison status is returned via the Get Sensor
+	Reading command.
+	[15] - reserved. Write as 0b
+	[14] - 1b = Upper non-recoverable threshold comparison is returned
+	[13] - 1b = Upper critical threshold is comparison returned
+	[12] - 1b = Upper non-critical threshold is comparison returned
+	Threshold Deassertion Event Mask
+	[11] - 1b = deassertion event for upper non-recoverable going high supported
+	[10] - 1b = deassertion event for upper non-recoverable going low supported
+	[9] - 1b = deassertion event for upper critical going high supported
+	[8] - 1b = deassertion event for upper critical going low supported
+	[7] - 1b = deassertion event for upper non-critical going high supported
+	[6] - 1b = deassertion event for upper non-critical going low supported
+	[5] - 1b = deassertion event for lower non-recoverable going high supported
+	[4] - 1b = deassertion event for lower non-recoverable going low supported
+	[3] - 1b = deassertion event for lower critical going high supported
+	[2] - 1b = deassertion event for lower critical going low supported
+	[1] - 1b = deassertion event for lower non-critical going high supported
+	[0] - 1b = deassertion event for lower non-critical going low supported
+	*/
+
+	/* Discrete Reading Mask / Settable Threshold Mask, Readable Threshold Mask 
+	   ------------------------------------------------------------------------ */
+	short reading_mask;	/* 19 & 20 - Reading Mask (for non- threshold 
+				   based sensors). Indicates what discrete 
+	readings can be returned by this sensor, or, for threshold based 
+	sensors, this indicates which thresholds are settable and which are
+	readable. The Reading Mask bytes are a bit mask that specifies support for 15
+	successive states starting with the value from Table 36-1, Event/Reading Type
+	Code Ranges. LS byte first.
+	[15] - reserved. Write as 0b
+	[14:0] - state bits 0 through 14.
+	1b = discrete state can be returned by this sensor.
+	
+	Settable Threshold Mask (for threshold-based sensors)
+	-----------------------------------------------------
+	Indicates which thresholds are settable via the Set Sensor Thresholds.
+       	This mask also indicates which threshold values will be initialized if
+       	the ‘Init Events’ bit is set. LS byte first.
+	[15:14] - reserved. Write as 00b.
+	[13] - 1b = Upper non-recoverable threshold is settable
+	[12] - 1b = Upper critical threshold is settable
+	[11] - 1b = Upper non-critical threshold is settable
+	[10] - 1b = Lower non-recoverable threshold is settable
+	[9] - 1b = Lower critical threshold is settable
+	[8] - 1b = Lower non-critical threshold is settable
+	
+	Readable Threshold Mask (for threshold-based sensors)
+	-----------------------------------------------------
+	Indicates which thresholds are readable via the Get Sensor Thresholds
+	command.
+	[7:6] - reserved. Write as 00b.
+	[5] - 1b = Upper non-recoverable threshold is readable
+	[4] - 1b = Upper critical threshold is readable
+	[3] - 1b = Upper non-critical threshold is readable
+	[2] - 1b = Lower non-recoverable threshold is readable
+	[1] - 1b = Lower critical threshold is readable
+	[0] - 1b = Lower non-critical threshold is readable */
+#ifdef BF_MS_FIRST
+	uchar	rsv3:2,			/* reserved */
+		rate_unit:3,		/* [5:3] - Rate unit
+					   000b = none
+					   001b = per µS
+					   010b = per ms
+					   011b = per s
+					   100b = per minute
+					   101b = per hour
+					   110b = per day
+					   111b = reserved */
+		modifier_unit:2,		/* [2:1] - Modifier unit
+					   00b = none
+					   01b = Basic Unit / Modifier Unit
+					   10b = Basic Unit * Modifier Unit
+					   11b = reserved */
+		percentage:1;		/* [0] - Percentage 0b = no, 1b = yes */
+#else
+	uchar	percentage:1,
+		modifier_unit:2,
+		rate_unit:3,
+		rsv3:2;
+#endif
+	uchar	sensor_units2;	/* 22 Sensor Units 2 - Base Unit  
+				   [7:0] - Units Type code: See Table 43-15,
+				   Sensor Unit Type Codes. */
+	uchar	sensor_units3;	/* 23 Sensor Units 3 - Modifier Unit
+				   [7:0] - Units Type code, 00h if unused. */
+	/* 24 Sensor Record Sharing, Sensor Direction */
+#ifdef BF_MS_FIRST
+	uchar	sensor_direction:2,	/* [7:6] - Sensor Direction. Indicates
+			whether the sensor is monitoring an input or output
+		       	relative to the given Entity. E.g. if the sensor is
+		       	monitoring a current, this can be used to specify whether
+		       	it is an input voltage or an output voltage.
+			  00b = unspecified / not applicable
+			  01b = input
+			  10b = output
+			  11b = reserved */
+		id_str_mod_type:2, /* [5:4] - ID String Instance Modifier Type (The
+			instance modifier is a character(s) that software can
+		       	append to the end of the ID String. This field selects
+		       	whether the appended character(s) will be numeric or 
+			alpha. The Instance Modified Offset field, below, selects
+		       	the starting value for the character.)
+			  00b = numeric
+			  01b = alpha */
+		share_count:4;	/* [3:0] - Share count (number of sensors sharing
+			this record). Sensor numbers sharing this record are 
+			sequential starting with the sensor number specified by
+		       	the Sensor Number field for this record. E.g. if the 
+			starting sensor number was 10, and the share count was 3,
+		       	then sensors 10, 11, and 12 would share this record. */
+#else
+	uchar	share_count:4,
+		id_str_mod_type:2,
+		sensor_direction:2;
+#endif
+	/* 25 Entity Instance Sharing */
+#ifdef BF_MS_FIRST
+	uchar	entity_inst_same:1,	/* [7] - 0b = Entity Instance same for all shared records
+					   1b = Entity Instance increments for each shared record */
+		id_str_mod_offset:7;	/* [6:0] - ID String Instance Modifier Offset
+			Multiple Discrete sensors can share the same sensor data 
+			record. The ID String Instance Modifier and Modifier 
+			Offset are used to modify the Sensor ID String as follows:
+			Suppose sensor ID is “Temp ” for ‘Temperature Sensor’,
+		       	share count = 3, ID string instance modifier = numeric,
+		       	instance modifier offset = 5 - then the sensors could be
+		       	identified as: Temp 5, Temp 6, Temp 7
+			If the modifier = alpha, offset=0 corresponds to ‘A’,
+		       	offset=25 corresponds to ‘Z’, and offset = 26 corresponds
+		       	to ‘AA’, thus, for offset=26 the sensors could be identified
+			as: Temp AA, Temp AB, Temp AC (alpha characters are 
+			considered to be base 26 for ASCII) */
+#else
+	uchar	id_str_mod_offset:7,
+		entity_inst_same:1;
+#endif
+	uchar	positive_hysteresis;	/* 26 Positive-going Threshold Hysteresis value
+			Positive hysteresis is defined as the unsigned number of 
+			counts that are subtracted from the raw threshold values
+		       	to create the ‘re-arm’ point for all positive-going thresholds
+		       	on the sensor. 0 indicates that there is no hysteresis on
+			positive-going thresholds for this sensor. Hysteresis values
+		       	are given as raw counts. That is, to find the degree of
+		       	hysteresis in units, the value must be converted using the
+		       	‘y=Mx+B’ formula. Note: Cannot use shared record if sensors
+		       	require individual hysteresis settings. */
+	uchar	negative_hysteresis;	/* 27 Negative-going Threshold Hysteresis value
+			Negative hysteresis is defined as the unsigned number of
+		       	counts that are added to the raw threshold value to create
+		       	the ‘re-arm’ point for all negative-going thresholds on the
+		       	sensor. 0 indicates that there is no hysteresis on negative-going
+			thresholds for this sensor. Note: Cannot use shared record
+		       	if sensors require individual hysteresis settings. */
+	uchar 	rsv4;		/* 28 reserved Write as 00h. */
+	uchar 	rsv5;		/* 29 reserved. Write as 00h. */
+	uchar	rsv6;		/* 30 reserved. Write as 00h. */
+	uchar	oem;	/* 31 Reserved for OEM use. */
+	uchar	id_str_typ_len;	/* 32 Sensor ID String Type/Length Code, per 
+				   Section 43.15, Type/Length Byte Format. */
+	uchar	sensor_id_str[16];	/* 33:+N Sensor ID String bytes. Only present
+			if non-zero length in Type/Length field. 16 bytes, maximum. */
+} COMPACT_SENSOR_RECORD;
+
+	
+/*
+ * SDR Type 12h - Management Controller Device Locator Record
+ */
+typedef struct mgmt_ctrl_dev_locator_record {
+	// RECORD HEADER
+	uchar	record_id[2];	/* The Record ID is used by the Sensor Data Repository 
+				   device for record organization and access. This may 
+				   not actually be stored, but may be calculated when 
+				   records are accessed. */
+	uchar	sdr_version;	/* SDR Version. Version of the Sensor Model specification
+				   that this record is compatible with. 51h for this 
+				   specification. This is BCD encoded with bits 7:4 holding
+				   the Least Significant digit of the revision and 
+				   bits 3:0 holding the Most Significant bits. E.g. 51h
+				   corresponds to “1.5”. */
+	uchar	record_type;	/* Record Type Number = 12h, Management Controller Locator */
+	uchar	record_len;	/* Record Length. Number of remaining record bytes following. */
+	// RECORD KEY BYTES
+	uchar	dev_slave_addr;	/* Device Slave Address. 
+				   [7:1] - 7-bit I2C Slave Address of device on channel.
+				   [0] - reserved. */
+	uchar	ch_num;		/* Channel Number.
+				   [7:4] - reserved
+				   [3:0] - Channel number for the channel that the 
+				   management controller is on. Use 0h for the primary BMC.
+				   (New byte for IPMI v1.5. Note this addition causes some
+				   of the following byte offsets to be pushed down when compared
+				   to the IPMI v1.0 version of this record.) */
+	// RECORD BODY BYTES
+	// Power State Notification.
+#ifdef BF_MS_FIRST
+	uchar	acpi_sys_pwr_st_notify_req:1,	/* [7] - 1b = ACPI System Power State notification required (by system s/w)
+						   0b = no ACPI System Power State notification required */
+		acpi_dev_pwr_st_notify_req:1,	/* [6] - 1b = ACPI Device Power State notification required (by system s/w)
+						   0b = no ACPI Device Power State notification required */
+		rsv1:1,	/* [5] - For backward compatibility, this bit does not apply to the BMC, 
+			   and should be written as 0b. 
+			   0b = Dynamic controller - controller may or may not 
+			   be present. Software should not generate error status
+			   if this controller is not present.
+			   1b = Static controller - this controller is expected
+			   to be present in the system at all times. Software may
+			   generate an error status if controller is not detected. */
+		rsv2:1,	/* [4] - reserved */
+	// Global Initialization
+		ctrl_logs_init_errs:1,	/* [3] - 1b = Controller logs Initialization 
+					   Agent errors (only applicable to Management
+					   Controller that implements the initialization
+					   agent function. Set to 0b otherwise.) */
+		log_init_agent_errs:1,	/* [2] - 1b = Log Initialization Agent errors 
+					   accessing this controller (this directs the
+					   initialization agent to log any failures
+					   setting the Event Receiver) */
+		ctrl_init:2;		/* [1:0] 
+			00b = Enable event message generation from controller 
+			(Init agent will set Event Receiver address into controller)
+			01b = Disable event message generation from controller 
+			(Init agent will set Event Receiver to FFh). This provides
+		       	a temporary fix for a broken controller that floods the 
+			system with events. It can also be used for development
+		       	/ debug purposes.
+			10b = Do not initialize controller. This selection is for
+		       	development / debug support.
+			11b = reserved. */
+#else
+	uchar	ctrl_init:2,
+		log_init_agent_errs:1,
+		ctrl_logs_init_errs:1,
+		rsv2:1,
+		rsv1:1,
+		acpi_dev_pwr_st_notify_req:1,
+		acpi_sys_pwr_st_notify_req:1;
+#endif
+	// Device Capabilities
+#ifdef BF_MS_FIRST
+	uchar	dev_sup_chassis:1, 	/* [7] - 1b = Chassis Device. (device 
+					   functions as chassis device, per ICMB 
+					   spec) */
+		dev_sup_bridge:1, 	/* [6] - 1b = Bridge (Controller responds 
+					   to Bridge NetFn commands) */
+		dev_sup_ipmb_evt_gen:1, /* [5] - 1b = IPMB Event Generator (device 
+					   generates event messages on IPMB) */
+		dev_sup_ipmb_evt_rcv:1, /* [4] - 1b = IPMB Event Receiver (device
+					   accepts event messages from IPMB) */
+		dev_sup_fru_inv:1, 	/* [3] - 1b = FRU Inventory Device 
+					   (accepts FRU commands to FRU Device #0
+					   at LUN 00b) */
+		dev_sup_sel:1, 		/* [2] - 1b = SEL Device (provides interface
+					   to SEL) */
+		dev_sup_sdr_rep:1,	/* [1] - 1b = SDR Repository Device (For 
+					   BMC, indicates BMC provides interface
+					   to 1b = SDR Repository. For other 
+					   controller, indicates controller accepts
+					   Device SDR commands) */
+		dev_sup_sensor:1; 	/* [0] - 1b = Sensor Device (device accepts
+					   sensor commands) See Table 37-11, 
+					   IPMB/I2C Device Type Codes */
+#else
+	uchar	dev_sup_sensor:1,
+		dev_sup_sdr_rep:1,
+		dev_sup_sel:1,
+		dev_sup_fru_inv:1,
+		dev_sup_ipmb_evt_rcv:1,
+		dev_sup_ipmb_evt_gen:1,
+		dev_sup_bridge:1,
+		dev_sup_chassis:1;
+#endif			       
+	uchar	rsv[3];
+	uchar	entity_id;		/* Entity ID for the FRU associated with 
+					   this device. 00h if not specified. If 
+					   device supports FRU commands at LUN 00b,
+					   this Entity ID applies to both the IPM
+					   device and the FRU information accessed
+					   via LUN 00b. */
+	uchar	entity_instance;	/* Entity Instance. Instance number for entity. */
+	uchar	oem;			/* Reserved for OEM use. */
+	uchar	dev_id_typ_len;		/* Device ID String Type/Length code per
+					   Section 43.15, Type/Length Byte Format.
+					   [7:6] 00 = Unicode
+						 01 = BCD plus (see below)
+						 10 = 6-bit ASCII, packed
+						 11 = 8-bit ASCII + Latin 1.
+					   [5] reserved.
+					   [4:0] length of following data, in characters. 
+					   0 indicates ‘none following’. 11111b = reserved. */				   
+	uchar	dev_id_str[15];		/* 17:+N Device ID String N Short ‘ID’
+					   string for the device. 16 bytes, maximum. */
+} MGMT_CTRL_DEV_LOCATOR_RECORD;
+
 
 /*======================================================================*/
 /*
@@ -7233,4 +7808,4 @@ typedef struct str_lst{
 void ipmi_process_pkt( IPMI_WS *ws ); 
 void ipmi_initialize( void );
 unsigned char ipmi_get_next_seq( unsigned char *seq );
-unsigned char ipmi_calculate_checksum( char *ptr, int numchar );
+unsigned char ipmi_calculate_checksum( unsigned char *ptr, int numchar );

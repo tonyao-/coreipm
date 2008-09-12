@@ -88,6 +88,8 @@ timer_initialize( void )
 	VICVectAddr3 = (unsigned long)hardclock;	/* set interrupt vector in 3 */
 	VICVectCntl3 = 0x20 | 4;			/* use it for Timer 0 Interrupt */
 	VICIntEnable = IER_TIMER0;			/* enable Timer0 interrupt */
+
+	cq_init();
 }
 
 /*==============================================================
@@ -124,7 +126,9 @@ timer_remove_callout_queue(
 {
 	CQE *ptr;
 	unsigned i;
-	
+	unsigned int interrupt_mask = CURRENT_INTERRUPT_MASK;	
+
+	DISABLE_INTERRUPTS;
 	for ( i = 0; i < CQ_ARRAY_SIZE; i++ )
 	{
 		ptr = &cq_array[i];
@@ -133,6 +137,7 @@ timer_remove_callout_queue(
 			break;
 		}
 	}
+	ENABLE_INTERRUPTS( interrupt_mask );
 }
 
 /*==============================================================
@@ -147,7 +152,9 @@ timer_reset_callout_queue(
 {
 	CQE *cqe;
 	unsigned i;
-	
+	unsigned int interrupt_mask = CURRENT_INTERRUPT_MASK;	
+
+	DISABLE_INTERRUPTS;	
 	for ( i = 0; i < CQ_ARRAY_SIZE; i++ )
 	{
 		cqe = &cq_array[i];
@@ -156,6 +163,7 @@ timer_reset_callout_queue(
 			break;
 		}
 	}
+	ENABLE_INTERRUPTS( interrupt_mask );
 }
 
 
@@ -232,7 +240,9 @@ cq_alloc( void )
 	CQE *cqe = 0;
 	CQE *ptr = cq_array;
 	unsigned i;
-	
+	unsigned int interrupt_mask = CURRENT_INTERRUPT_MASK;	
+
+	DISABLE_INTERRUPTS;
 	for ( i = 0; i < CQ_ARRAY_SIZE; i++ )
 	{
 		ptr = &cq_array[i];
@@ -243,6 +253,7 @@ cq_alloc( void )
 			break;
 		}
 	}
+	ENABLE_INTERRUPTS( interrupt_mask );
 	return cqe;
 }
 
@@ -265,7 +276,9 @@ cq_get_expired_elem( unsigned long current_tick )
 	CQE *cqe = 0;
 	CQE *ptr = cq_array;
 	unsigned i;
-	
+	unsigned int interrupt_mask = CURRENT_INTERRUPT_MASK;	
+
+	DISABLE_INTERRUPTS;
 	for ( i = 0; i < CQ_ARRAY_SIZE; i++ )
 	{
 		ptr = &cq_array[i];
@@ -275,6 +288,7 @@ cq_get_expired_elem( unsigned long current_tick )
 			break;
 		}
 	}
+	ENABLE_INTERRUPTS( interrupt_mask );
 	return cqe;
 }
 

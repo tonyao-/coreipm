@@ -40,7 +40,7 @@ iopin_clear( unsigned long long bit )
 	IOCLR0 = ( unsigned )bit;	
 }
 
-unsigned  char
+unsigned char
 iopin_get( unsigned long long bit )
 {
 	unsigned char retval;

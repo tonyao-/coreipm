@@ -730,7 +730,7 @@ term_process( uchar *buf )
 	int port_handle;
 	int i;
 	IPMI_TERMINAL_MODE_HDR tm_hdr = { 0, 0, 0 };
-	uchar *req_ptr = (char *)&tm_hdr;
+	unsigned char *req_ptr = (unsigned char *)&tm_hdr;
 	IPMI_WS *ws;
 
 	/* first character must be '[' */
@@ -743,7 +743,7 @@ term_process( uchar *buf )
 	if( strncmp( ( const char * )ptr, "SYS", 3 ) && strncmp( ( const char * )ptr, "sys", 3 ) ) 
 		goto message_process;
 
-	if( ptr = strchr( ( const char * )ptr, ' ' ) ) {
+	if( ptr = ( unsigned char * )strchr( ( const char * )ptr, ' ' ) ) {
 		ptr++;
 	}
 	else {
@@ -754,7 +754,7 @@ term_process( uchar *buf )
 	if( ( strncmp( ( const char * )ptr, "POWER", 5 ) == 0 ) 
 			|| ( strncmp( ( const char * )ptr, "power", 5 ) == 0 ) ) {
 
-		if( ptr = strchr( ( const char * )ptr, ' ' ) ) {
+		if( ptr = ( unsigned char * )strchr( ( const char * )ptr, ' ' ) ) {
 			ptr++;
 		}
 		else
@@ -878,9 +878,9 @@ message_process:
 	nibble_count = 0;
 	buf_len = strlen( ( const char * )buf );
 	while( ptr < buf + buf_len ) {
-		if( ( ( *ptr >= 'A' ) && ( *ptr <= 'F' ) ) ||
-		    ( ( *ptr >= 'a' ) && ( *ptr <= 'f' ) ) ||
-		    ( ( *ptr >= '0' ) && ( *ptr <= '9' ) ) &&
+		if( ( ( ( *ptr >= 'A' ) && ( *ptr <= 'F' ) ) ||
+		      ( ( *ptr >= 'a' ) && ( *ptr <= 'f' ) ) ||
+		      ( ( *ptr >= '0' ) && ( *ptr <= '9' ) ) )&&
 			( nibble_count < 2 ) ) {
 			nibble[nibble_count] = *ptr;
 			nibble_count++;

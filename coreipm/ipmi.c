@@ -53,7 +53,7 @@ support and contact details.
 #define WD_STATE_TIMER_RUNNING_POST_PRE_TIMEOUT_INTERRUPT	3
 
 #define FRU_LOCATOR_TABLE_SIZE	16
-//#define DUMP_RESPONSE
+#define DUMP_RESPONSE
 
 
 typedef struct watchdog_info {
@@ -81,7 +81,7 @@ typedef struct watchdog_info {
 struct {
 	uchar fru_dev_id;
 	uchar i2c_address;
-} fru_locator_table[FRU_LOCATOR_TABLE_SIZE] = { 0, 0 };
+} fru_locator_table[FRU_LOCATOR_TABLE_SIZE] = { {0, 0} };
 
 WATCHDOG_INFO wd_timer;
 FRU_CACHE fru_inventory_cache[FRU_INVENTORY_CACHE_ARRAY_SIZE];
@@ -396,7 +396,7 @@ ipmi_process_pkt( IPMI_WS * ws )
  * 	the result should be 0.
  */
 uchar
-ipmi_calculate_checksum( char *ptr, int numchar )
+ipmi_calculate_checksum( unsigned char *ptr, int numchar )
 {
 	char checksum = 0;
 	int i;
@@ -622,29 +622,27 @@ ipmi_process_app_req( IPMI_PKT *pkt )
 			dputstr( DBG_IPMI | DBG_LVL1, "ipmi_process_app_req: IPMI_CMD_GET_DEVICE_ID\n" );
 			
 			gdi_resp->completion_code = CC_NORMAL;
-			gdi_resp->device_id = 0x1f;
+			gdi_resp->device_id = 0x0;
 			gdi_resp->device_sdr_provided = 1; 	/* 1 = device provides Device SDRs */
-			gdi_resp->device_revision = 1;		/* 4 bit field, binary encoded */
-			gdi_resp->device_available = device_status;
-			gdi_resp->major_fw_rev = 0x00;
-			gdi_resp->minor_fw_rev = 0x01;
+			gdi_resp->device_revision = 0;		/* 4 bit field, binary encoded */
+			gdi_resp->device_available = 0;
+			gdi_resp->major_fw_rev = 0x01;
+			gdi_resp->minor_fw_rev = 0x00;
 			gdi_resp->ipmi_version = 0x02;
 			gdi_resp->add_dev_support = 
 				DEV_SUP_IPMB_EVENT_GEN |
 				DEV_SUP_FRU_INVENTORY |
-				DEV_SUP_SEL |
 				DEV_SUP_SDR_REPOSITORY |
-				DEV_SUP_SENSOR |
-				DEV_SUP_BRIDGE;
-			gdi_resp->manuf_id[0] = 0xf2;
-			gdi_resp->manuf_id[1] = 0x1b;
+				DEV_SUP_SENSOR;
+			gdi_resp->manuf_id[0] = 0xbe;
+			gdi_resp->manuf_id[1] = 0x12;
 			gdi_resp->manuf_id[2] = 0x0;
-			gdi_resp->product_id[0] = 0xca;
-			gdi_resp->product_id[1] = 0xfe;
+			gdi_resp->product_id[0] = 0x00;
+			gdi_resp->product_id[1] = 0x80;
 			gdi_resp->aux_fw_rev[0] = 0x0;
 			gdi_resp->aux_fw_rev[1] = 0x0;
 			gdi_resp->aux_fw_rev[2] = 0x0;
-			gdi_resp->aux_fw_rev[3] = 0x1;
+			gdi_resp->aux_fw_rev[3] = 0x0;
 		    }
 		    pkt->hdr.resp_data_len = 15;
 		    break;
@@ -1020,7 +1018,7 @@ ipmi_get_fru_inventory_area_info( IPMI_PKT *pkt )
 	}
 
 	if( found ) {
-		resp->fru_inventory_area_size_lsb = fru_inventory_cache[i].fru_inventory_area_size & 0xf;
+		resp->fru_inventory_area_size_lsb = fru_inventory_cache[i].fru_inventory_area_size & 0xff;
 		resp->fru_inventory_area_size_msb = fru_inventory_cache[i].fru_inventory_area_size >> 8;
 		resp->access_method = 0;	/* Device is accessed by bytes */
 		resp->completion_code = CC_NORMAL;

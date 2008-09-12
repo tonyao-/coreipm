@@ -377,7 +377,7 @@ typedef struct amc_p2p_conn_record {
 		reserved:3,
 		eol:1;
 #endif
-	uchar	record_len;	/* Record Length. */
+	uchar	record_len;	/* Record Length. # of bytes following rec cksum */
 	uchar	record_cksum;	/* Record Checksum. Holds the zero checksum of
 				   the record. */
 	uchar	header_cksum;	/* Header Checksum. Holds the zero checksum of 
@@ -386,9 +386,8 @@ typedef struct amc_p2p_conn_record {
 				   three byte ID assigned to PICMG®. For this
 				   specification, the value 12634 (00315Ah) shall
 				   be used. */
-	uchar	picmg_rec_id;	/* PICMG Record ID. For the Shelf Power 
-				   Distribution Record, the value 11h shall be
-				   used. */
+	uchar	picmg_rec_id;	/* PICMG Record ID. For the AMC Point-to-Point
+				   Connectivity record, the value 19h must be used  */
 	uchar	rec_fmt_ver;	/* Record Format Version. For this specification,
 				   the value 0h shall be used. */
 	uchar	oem_guid_count;	/* OEM GUID Count. The number, n, of OEM GUIDs
