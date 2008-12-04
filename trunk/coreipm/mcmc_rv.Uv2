@@ -43,6 +43,7 @@ File 1,2,<.\Startup_rv.s><Startup_rv.s>
 File 1,1,<.\remap.c><remap.c>
 File 1,1,<.\mcmcio.c><mcmcio.c>
 File 1,1,<.\mcmc.c><mcmc.c>
+File 1,1,<.\req.c><req.c>
 
 
 Options 1,0,0  // Target 'Target 1'
@@ -91,7 +92,6 @@ Options 1,0,0  // Target 'Target 1'
  GLFLAGS=1790
  ADSFLGA { 243,31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
  ACPUTYP (ARM7TDMI)
- RVDEV ()
  ADSTFLGA { 0,12,0,18,163,0,0,66,0,0,0,0,0,0,0,0,0,0,0,0 }
  OCMADSOCM { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
  OCMADSIRAM { 0,0,0,0,64,0,128,0,0 }
@@ -101,7 +101,7 @@ Options 1,0,0  // Target 'Target 1'
  RV_STAVEC ()
  ADSCCFLG { 5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
  ADSCMISC ()
- ADSCDEFN (MMC PICMG)
+ ADSCDEFN (PICMG)
  ADSCUDEF ()
  ADSCINCD ()
  ADSASFLG { 1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
