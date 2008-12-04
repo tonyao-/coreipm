@@ -276,8 +276,15 @@ typedef struct ipmi_cmd_resp {
  * Channel Info command to determine what types of channels are available and 
  * what channel number assignments are used on a given platform. 
  */
+
+/* AMC REQ 3.151: Carrier IPMCs and MMCs shall implement IPMB-L as IPMI
+ * messaging channel number 7.
+ */
+
 #define IPMI_CH_NUM_PRIMARY_IPMB	0x0
 #define IPMI_CH_NUM_CONSOLE		0x1
+#define IPMI_CH_NUM_LOCAL		0x2
+#define IPMI_CH_NUM_IPMBL		0x7
 #define IPMI_CH_NUM_PRESENT_INTERFACE	0xE
 #define IPMI_CH_NUM_SYS_INTERFACE	0xF
 
@@ -7698,37 +7705,57 @@ typedef struct get_ipmb_link_info_cmd_resp {
 #define IPMB_LINK_INFO_QUAL_LINK_NUMBER		0
 #define IPMB_LINK_INFO_QUAL_SENSOR_NUMBER	1
 
+#define EVT_DATA2_UNSPECIFIED		0x0
+#define EVT_DATA2_TRIGGER_READING	0x1
+#define EVT_DATA2_OEM_CODE		0x2
+#define EVT_DATA2_SENSOR_SPECIFIC	0x3
+
+#define EVT_DATA3_UNSPECIFIED		0x0
+#define EVT_DATA3_TRIGGER_THRESHOLD	0x1
+#define EVT_DATA3_OEM_CODE		0x2
+#define EVT_DATA3_SENSOR_SPECIFIC	0x3
+
+#define UPPER_NON_CRITICAL_GOING_HIGH	0x7
+#define UPPER_CRITICAL_GOING_HIGH	0x9
+#define UPPER_NON_RECOVERABLE_GOING_HIGH	0xB
 
 /*----------------------------------------------------------------------*/
 /*			Temperature Event Message			*/
 /*----------------------------------------------------------------------*/
 
-typedef struct fru_hot_swap_event_msg {
+typedef struct fru_temperature_event_msg_req {
+	uchar	command;
 	uchar	evt_msg_rev;		/* Event Message Rev = 04h (IPMI v1.5) */
 	uchar	sensor_type;		/* Sensor Type = 01h (Threshold)  */
 	uchar	sensor_number;		/* Sensor Number = 0xxh (Implementation specific) */
 	uchar	evt_direction;		/* Event Direction (bit7) = 0b (Assertion) and 1b (Deassertion)
 					   Event Type [6:0] = 01h (Temperature) */
-	uchar	evt_data1;		/* Event Data 1
-					   [7:6] - 00b = Unspecified Event Data 2
+	/* Event Data 1 */
+	uchar	evt_data2_qual:2,	/* [7:6] - Event data 2 qualifier
+					   00b = Unspecified Event Data 2
 					   01b = Trigger reading in Event Data 2
 					   10b = OEM code in Event Data 2
 					   11b = Sensor-specific event extension 
-					   code in Event Data 2
-					   [5:4] - 00b = Unspecified Event Data 3
+						 code in Event Data 2 */
+		evt_data3_qual:2,	/* [5:4] - Event data 3 qualifier 
+					   00b = Unspecified Event Data 3
 					   01b = Trigger threshold value in Event Data 3
 					   10b = OEM code in Event Data 3
-					   11b = Sensor-specific event extension code in Event Data 3
-					   [3:0] - 00h - 05h = IPMI Lower Thresholds
+					   11b = Sensor-specific event extension code in Event Data 3 */
+		
+		evt_reason:4;		/* [3:0] - reason for the event
+					   00h - 05h = IPMI Lower Thresholds
 					   07h = Upper Non-critical (minor) - going high
 					   09h = Upper Critical (major) - going high
 					   0Bh = Upper Non-recoverable (critical) - going high */
-	uchar	evt_data2;		/* Event Data 2 - reading that triggered event, 
+	/* Event Data 2 */
+	uchar	temp_reading;		/* Event Data 2 - reading that triggered event, 
 					   FFh or not present if unspecified. */
-	uchar	evt_data3;		/* Event Data 3 - threshold value that triggered 
+	/* Event Data 3 */
+	uchar	threshold;		/* Event Data 3 - threshold value that triggered 
 					   event, FFh or not present if unspecified. 
 					   If present, byte 2 must be present. */
-} FRU_HOT_SWAP_EVENT_MSG;
+} FRU_TEMPERATURE_EVENT_MSG_REQ;
 
 #define ATCA_CMD_GET_PICMG_PROPERTIES_STR		"Get PICMG Properties"
 #define ATCA_CMD_GET_ADDRESS_INFO_STR			"Get Address Info"
