@@ -1,0 +1,5 @@
+
+building_ipmi_test.txt
+
+cc -o ipmi_test ipmi_test.c ws.c tty.c ipmi_pkt.c strings.c rmcpd.c
+
