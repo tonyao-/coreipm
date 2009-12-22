@@ -1,0 +1,75 @@
+### uVision2 Project, (C) Keil Software
+### Do not modify !
+
+ cExt (*.c)
+ aExt (*.s*; *.src; *.a*)
+ oExt (*.obj)
+ lExt (*.lib)
+ tExt (*.txt; *.h; *.inc)
+ pExt (*.plm)
+ CppX (*.cpp)
+ DaveTm { 0,0,0,0,0,0,0,0 }
+
+Target (Target 1), 0x0004 // Tools: 'ARM-ADS'
+GRPOPT 1,(Source Group 1),1,0,0
+
+OPTFFF 1,1,5,0,0,0,0,0,<.\arch.h><arch.h> 
+OPTFFF 1,2,5,0,0,0,0,0,<.\error.h><error.h> 
+OPTFFF 1,3,5,0,0,0,0,0,<.\ipmi.h><ipmi.h> 
+OPTFFF 1,4,1,469762048,0,0,0,0,<.\ipmi.c><ipmi.c> 
+OPTFFF 1,5,5,0,0,0,0,0,<.\i2c.h><i2c.h> 
+OPTFFF 1,6,1,0,0,0,0,0,<.\i2c.c><i2c.c> 
+OPTFFF 1,7,5,0,0,0,0,0,<.\timer.h><timer.h> 
+OPTFFF 1,8,1,0,0,0,0,0,<.\timer.c><timer.c> 
+OPTFFF 1,9,5,0,0,0,0,0,<.\gpio.h><gpio.h> 
+OPTFFF 1,10,1,0,0,0,0,0,<.\gpio.c><gpio.c> 
+OPTFFF 1,11,5,0,0,0,0,0,<.\serial.h><serial.h> 
+OPTFFF 1,12,1,0,0,0,0,0,<.\serial.c><serial.c> 
+OPTFFF 1,13,5,0,0,0,0,0,<.\wd.h><wd.h> 
+OPTFFF 1,14,1,0,0,0,0,0,<.\wd.c><wd.c> 
+OPTFFF 1,15,5,0,0,0,0,0,<.\ws.h><ws.h> 
+OPTFFF 1,16,1,0,0,0,0,0,<.\ws.c><ws.c> 
+OPTFFF 1,17,5,0,0,0,0,0,<.\debug.h><debug.h> 
+OPTFFF 1,18,1,0,0,0,0,0,<.\debug.c><debug.c> 
+OPTFFF 1,19,5,0,0,0,0,0,<.\fan.h><fan.h> 
+OPTFFF 1,20,1,0,0,0,0,0,<.\fan.c><fan.c> 
+OPTFFF 1,21,1,0,0,0,0,0,<.\picmg.c><picmg.c> 
+OPTFFF 1,22,5,0,0,0,0,0,<.\strings.h><strings.h> 
+OPTFFF 1,23,1,0,0,0,0,0,<.\strings.c><strings.c> 
+OPTFFF 1,24,1,0,0,0,0,0,<.\event.c><event.c> 
+OPTFFF 1,25,5,0,0,0,0,0,<.\event.h><event.h> 
+OPTFFF 1,26,1,0,0,0,0,0,<.\sensor.c><sensor.c> 
+OPTFFF 1,27,5,0,0,0,0,0,<.\sensor.h><sensor.h> 
+OPTFFF 1,28,1,0,0,0,0,0,<.\adc.c><adc.c> 
+OPTFFF 1,29,1,285212672,0,0,0,0,<.\rtc.c><rtc.c> 
+OPTFFF 1,30,5,0,0,0,0,0,<.\rtc.h><rtc.h> 
+OPTFFF 1,31,1,0,0,0,0,0,<.\iopin.c><iopin.c> 
+OPTFFF 1,32,1,536870912,0,0,0,0,<.\ipmc.c><ipmc.c> 
+OPTFFF 1,33,1,0,0,0,0,0,<.\spi.c><spi.c> 
+OPTFFF 1,34,1,0,0,0,0,0,<.\flash.c><flash.c> 
+OPTFFF 1,35,1,0,0,0,0,0,<.\main.c><main.c> 
+OPTFFF 1,36,2,0,0,0,0,0,<.\Startup_rv.s><Startup_rv.s> 
+OPTFFF 1,37,1,0,0,0,0,0,<.\remap.c><remap.c> 
+OPTFFF 1,38,1,1,0,0,0,0,<.\ipmcio.c><ipmcio.c> 
+
+
+TARGOPT 1, (Target 1)
+ ADSCLK=12000000
+  OPTTT 1,1,1,0
+  OPTHX 1,65535,0,0,0
+  OPTLX 79,66,8,<.\ipmc_rv_lst\>
+  OPTOX 16
+  OPTLT 1,1,1,0,1,1,0,1,0,0,0,0
+  OPTXL 1,1,1,1,1,1,1,0,0
+  OPTFL 1,0,1
+  OPTAX 255
+  OPTBL 0,(Data Sheet)<DATASHTS\PHILIPS\LPC236x_DS.PDF>
+  OPTBL 1,(User Manual)<DATASHTS\PHILIPS\LPC23xx_UM.pdf>
+  OPTDL (SARM.DLL)(-cLPC236x)(DARMP.DLL)(-pLPC2368)(SARM.DLL)()(TARMP.DLL)(-pLPC2368)
+  OPTDBG 48125,0,()()()()()()()()()() (BIN\UL2ARM.DLL)()()()
+  OPTKEY 0,(UL2ARM)(-U268761108 -O7 -S0 -C0 -FO15 -FD40000000 -FC800 -FN1 -FF0LPC_IAP2_512 -FS00 -FL07D000)
+  OPTDF 0x0
+  OPTLE <>
+  OPTLC <>
+EndOpt
+

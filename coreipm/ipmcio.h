@@ -95,9 +95,12 @@ support and contact details.
 #define GPIO_3		P0_13  // 39
 #define LED_1		P0_17  // 47
 #define BLUE_LED	P0_31  // 17
+#define LED_0		BLUE_LED
+#define GPIO_LED_0	LED_0
+#define GPIO_LED_1	LED_1
 
 // TACH-PWM / GPIO
 #define TACH_IN_0	P0_19  // 54
 #define PWM_OUT_0	P0_7   // 31
 
-
+#define PAYLOAD_POWER P4_29

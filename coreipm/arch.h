@@ -23,8 +23,11 @@ See http://www.coreipm.com for documentation, latest information, licensing,
 support and contact details.
 -------------------------------------------------------------------------------
 */
-
+#ifdef IPMC
+#include "lpc23nn.h"
+#elif
 #include "lpc21nn.h"
+#endif
 
 // Interrupt Enable register (VICIntEnable) bit allocation
 					// Bit   

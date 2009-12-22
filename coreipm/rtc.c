@@ -24,7 +24,6 @@ support and contact details.
 -------------------------------------------------------------------------------
 */
 #include "arch.h"
-#include "lpc21nn.h"
 #include "rtc.h"
 
 
