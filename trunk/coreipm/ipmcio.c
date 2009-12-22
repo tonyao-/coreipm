@@ -29,11 +29,11 @@ support and contact details.
 #include "ipmcio.h"
 #include "serial.h"
 #include "debug.h"
+#include "iopin.h"
 
 
 
-
-void ipmcio_initialize( void ) 
+void iopin_initialize( void ) 
 {
 
 	/* Initialize Pin Connect Block */
@@ -105,5 +105,41 @@ void ipmcio_initialize( void )
  * - hot swap switch
  * - m-states
  *   event receiver for AMC modules
+ */
+void
+module_led_on( unsigned led_state )
+{
+	long long iopin = 0;
+
+	if( led_state & GPIO_LED_0 ) iopin |= LED_0;
+	if( led_state & GPIO_LED_1 ) iopin |= LED_1;
+	iopin_set( iopin );
+
+}
+
+void
+module_led_off( unsigned led_state )
+{
+	long long iopin = 0;
+
+	if( ~led_state & GPIO_LED_0 ) iopin |= LED_0;
+	if( ~led_state & GPIO_LED_1 ) iopin |= LED_1;
+
+	iopin_clear( iopin );
+}
+
+void
+module_payload_on( void )
+{
+	iopin_set( PAYLOAD_POWER );
+}
+
+void
+module_payload_off( void )
+{
+	iopin_clear( PAYLOAD_POWER );
+
+}
+
 
 
